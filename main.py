@@ -22,13 +22,11 @@ control-U7L6
 0～5秒間の平均回転速度　5.89 radian/sec
 40～45秒間の平均回転速度　5.89 radian/sec
 """
-import os
 
 from tqdm import tqdm
 
-from gui import gui
-from utils import *
 from calc import *
+from gui import gui
 
 
 def binarization_video(video_path: str, output_path: str, threshold=127):
