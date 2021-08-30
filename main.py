@@ -69,7 +69,7 @@ def cell_detect_video(video_path: str, output_path: str, threshold=127, roi=None
         roi = (int(roi_ratio[0] * width), int(roi_ratio[1] * height)),
         (int(roi_ratio[2] * width), int(roi_ratio[3] * height))
 
-    bar = tqdm(total=video_length, desc=f"Binarization {video_path}")
+    bar = tqdm(total=video_length, desc=f"Cell Detect {video_path}")
     set_frame_position(video_capture, 0)
     while video_capture.isOpened() and get_frame_position(video_capture) in range(video_length):
         # Progress
@@ -92,6 +92,7 @@ def cell_detect_video(video_path: str, output_path: str, threshold=127, roi=None
         #     hull_list.append(hull)
 
         # Filter out the contours that unlikely to be a circle
+        # TODO: check cv2.approxPolyDP
         contours = [contours_i for contours_i in contours if len(contours_i) > 4]
         # Get all points from contours
         ptr_list = np.concatenate(contours)
@@ -114,6 +115,68 @@ def cell_detect_video(video_path: str, output_path: str, threshold=127, roi=None
         video_writer.write(frame_copy)
 
     video_capture.release()
+    video_writer.release()
+
+
+def cell_crop_video(video_path: str, output_path: str, threshold=127, roi=None):
+    # Input/Output
+    video_capture = get_video_capture(video_path)
+    video_length = get_video_length(video_path)
+    width, height = get_video_dimension(video_path)
+    video_framerate = get_video_framerate(video_path)
+
+    if roi is None:
+        roi_ratio = (0.33, 0.33, 0.66, 0.66)  # Ratio on width and height. x1,y1,x2,y2.
+        roi = (int(roi_ratio[0] * width), int(roi_ratio[1] * height)),
+        (int(roi_ratio[2] * width), int(roi_ratio[3] * height))
+
+    bar = tqdm(total=video_length, desc=f"Cell Detect {video_path}")
+    set_frame_position(video_capture, 0)
+    bounding_rects = []
+    masked_frames = []
+    while video_capture.isOpened() and get_frame_position(video_capture) in range(video_length):
+        # Progress
+        bar.update(1)
+        bar.refresh()
+
+        ret, frame = video_capture.read()
+        if not ret:
+            break
+        frame_copy = frame.copy()
+        frame = binarization_img(frame, threshold, cv2.THRESH_BINARY_INV)
+        frame = apply_mask_img(frame, draw_mask_roi(roi, width, height))
+
+        contours, hierarchy = cv2.findContours(frame, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter out the contours that unlikely to be a circle
+        contours = [contours_i for contours_i in contours if len(contours_i) > 4]
+        # Get all points from contours
+        ptr_list = np.concatenate(contours)
+        # Find the convex hull object for all points in contours
+        hull_list = [cv2.convexHull(ptr_list)]
+
+        bounding_rects.append(cv2.boundingRect(hull_list[0]))
+        # Mask unrelated region, save to frame list
+        mask = draw_mask_contours(hull_list, width, height)
+        masked_frames.append(apply_mask_img(frame_copy, mask))
+
+    video_capture.release()
+    bar.close()
+
+    # Output cropped video
+    mean_width, mean_height = [round(x) for x in np.array(bounding_rects).mean(axis=0)][-2:]
+    video_writer = get_video_writer(output_path, video_framerate, (mean_width, mean_height))
+
+    bar = tqdm(total=len(masked_frames), desc="Cropping")
+    for (x, y, w, h), frame in zip(bounding_rects, masked_frames):
+        # Progress
+        bar.update(1)
+        bar.refresh()
+
+        mid_x, mid_y = x + w // 2, y + h // 2
+        new_bounding_rect = (mid_x - mean_width // 2, mid_y - mean_height // 2, mean_width, mean_height)
+        frame_cropped = crop_img_rect(frame, new_bounding_rect)
+        video_writer.write(frame_cropped)
     video_writer.release()
 
 
@@ -146,4 +209,5 @@ if __name__ == "__main__":
         with open(roi_cache_path, "wb") as pkl:
             roi_cache[f] = roi
             pickle.dump(roi_cache, pkl)
-        cell_detect_video(f, output_path=output_path, threshold=threshold, roi=roi)
+        # cell_detect_video(f, output_path=output_path, threshold=threshold, roi=roi)
+        cell_crop_video(f, output_path=output_path, threshold=threshold, roi=roi)

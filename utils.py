@@ -30,6 +30,14 @@ def draw_mask_roi(roi, width: int, height: int):
     return binarization_img(black)
 
 
+def draw_mask_contours(contours, width: int, height: int):
+    # Black in RGB
+    black = np.zeros((width, height, 3), np.uint8)
+    # Draw mask from ROI
+    black = cv2.drawContours(black, contours, -1, (255, 255, 255), -1)
+    return binarization_img(black)
+
+
 def draw_label(img, pt, label: str):
     text_size, _ = cv2.getTextSize(label, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.3, thickness=1)
     text_w, text_h = text_size
@@ -40,6 +48,11 @@ def draw_label(img, pt, label: str):
 
 def apply_mask_img(img, mask):
     return cv2.bitwise_and(img, img, mask=mask)
+
+
+def crop_img_rect(img, rect):
+    x, y, w, h = rect
+    return img[y:y + h, x:x + w]
 
 
 def get_video_capture(video_path: str) -> cv2.VideoCapture:
