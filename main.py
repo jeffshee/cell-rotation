@@ -28,6 +28,7 @@ from tqdm import tqdm
 
 from gui import gui
 from utils import *
+from calc import *
 
 
 def binarization_video(video_path: str, output_path: str, threshold=127):
@@ -204,10 +205,13 @@ if __name__ == "__main__":
 
     for f in file_list:
         f_basename = os.path.basename(f)
-        output_path = os.path.join(output_root, filename_append(f_basename, "contr"))
+        # output_path = os.path.join(output_root, filename_append(f_basename, "contr"))
+        output_path = os.path.join(output_root, filename_append(f_basename, "crop"))
+        output_path_fig = filename_append(output_path, "fig", "png")
         roi, threshold = gui(f, cached_roi=roi_cache.get(f, None))
         with open(roi_cache_path, "wb") as pkl:
             roi_cache[f] = roi
             pickle.dump(roi_cache, pkl)
         # cell_detect_video(f, output_path=output_path, threshold=threshold, roi=roi)
         cell_crop_video(f, output_path=output_path, threshold=threshold, roi=roi)
+        plot_s_against_delta(video_path=output_path, output_path=output_path_fig)

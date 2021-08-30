@@ -87,6 +87,8 @@ def get_video_framerate(video_path: str) -> float:
     return float(video_capture.get(cv2.CAP_PROP_FPS))
 
 
-def filename_append(filename: str, append: str):
+def filename_append(filename: str, append: str, ext_override: str = None):
     basename, ext = filename.rsplit(".", 1)
+    if ext_override is not None:
+        ext = ext_override
     return f"{basename}_{append}.{ext}"
