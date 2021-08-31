@@ -16,21 +16,6 @@ def rot_angle_from_homography(M):
     return theta
 
 
-def accum_thetas(thetas):
-    # To 0 ~ 360 (deg)
-    thetas = np.where(thetas >= 0, thetas, thetas + 360)
-
-    offset = 0
-    accum = []
-    accum.append(thetas[0])
-    for t1, t2 in zip(thetas, thetas[1:]):
-        if t2 < t1 and (t1 - t2) > 180:
-            offset += 360
-        accum.append(t2 + offset)
-
-    return np.array(accum)
-
-
 class MethodB:
     """
     Alternative method based on feature descriptors and homography
@@ -132,19 +117,26 @@ def plot_theta_against_t(ts: np.ndarray, thetas: np.ndarray, output_path=None):
         plt.savefig(output_path)
 
 
-def plot_rot_speed_against_t(ts: np.ndarray, thetas: np.ndarray, output_path=None):
+def plot_angular_speed_against_t(ts: np.ndarray, thetas: np.ndarray, output_path=None):
     plt.figure()
-    plt.title(f"Rotation speed against t")
+    plt.title(f"Angular speed against t")
     plt.xlabel("t [sec]")
-    plt.ylabel("Rotation speed [deg/s]")
-    accum = accum_thetas(thetas)
-    rot_speeds = np.gradient(accum, ts)
-    plt.plot(ts, rot_speeds)
+    plt.ylabel("Angular speed [deg/s]")
+    # Convert to rad, unwrap
+    thetas = np.unwrap(np.deg2rad(thetas))
+    angular_speeds = np.gradient(thetas, ts)
+    # Convert back to deg
+    angular_speeds = np.rad2deg(angular_speeds)
+    mean_angular_speeds = np.mean(angular_speeds)
+    plt.plot(ts, angular_speeds)
+    plt.axhline(y=mean_angular_speeds, c="grey", linestyle="--")
+    plt.annotate("Mean: %.2f [deg/s]; %.2f [rad/s]" % (np.mean(angular_speeds), np.deg2rad(np.mean(angular_speeds))),
+                 (0, mean_angular_speeds))
     if output_path is None:
         plt.show()
     else:
         plt.savefig(output_path)
-    print(f"Rotation speed: {np.mean(rot_speeds)} [deg/s]")
+    print(f"Angular speed: {np.mean(angular_speeds)} [deg/s]")
 
 
 if __name__ == "__main__":
@@ -152,4 +144,4 @@ if __name__ == "__main__":
     method_b = MethodB(template_img, "res/rotate_qr_320.mp4", "res/rotate_qr_320_matching.avi")
     ts, thetas = method_b.calc()
     plot_theta_against_t(ts, thetas)
-    plot_rot_speed_against_t(ts, thetas)
+    plot_angular_speed_against_t(ts, thetas)
