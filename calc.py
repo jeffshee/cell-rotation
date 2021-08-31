@@ -1,8 +1,9 @@
 import os
 
-from utils import *
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+
+from utils import *
 
 TM_METHOD = [cv2.TM_CCORR_NORMED, cv2.TM_CCOEFF_NORMED][1]
 SLIDING_WINDOW_SEC = 3.0
@@ -70,6 +71,11 @@ def plot_s_against_delta(video_path: str, output_path=None):
 
 
 if __name__ == "__main__":
-    t1 = np.random.randint(0, 255, size=(20, 20, 1), dtype=np.uint8)
-    t2 = np.random.randint(0, 255, size=(20, 20, 1), dtype=np.uint8)
-    print(similarity(t1, t2))
+    # t1 = np.random.randint(0, 255, size=(20, 20, 1), dtype=np.uint8)
+    # t2 = np.random.randint(0, 255, size=(20, 20, 1), dtype=np.uint8)
+    # print(similarity(t1, t2))
+
+    # Dummy video for testing, the rotation speed is 2*PI (rad/s)
+    # Video length is 15 sec. The object spins for 15 times.
+    dummy_path = "res/rotate_qr_320.mp4"
+    plot_s_against_delta("res/rotate_qr_320.mp4", "res/rotate_qr_320_fig.png")
