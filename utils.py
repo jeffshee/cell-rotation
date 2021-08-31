@@ -38,11 +38,11 @@ def draw_mask_contours(contours, width: int, height: int):
     return binarization_img(black)
 
 
-def draw_label(img, pt, label: str):
-    text_size, _ = cv2.getTextSize(label, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.3, thickness=1)
+def draw_label(img, pt, label: str, font_scale=0.3):
+    text_size, _ = cv2.getTextSize(label, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=font_scale, thickness=1)
     text_w, text_h = text_size
     img = cv2.rectangle(img, (pt[0], pt[1] - text_h), (pt[0] + text_w, pt[1]), color=(0, 0, 0), thickness=-1)
-    return cv2.putText(img, label, (pt[0], pt[1]), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.3,
+    return cv2.putText(img, label, (pt[0], pt[1]), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=font_scale,
                        color=(255, 255, 255), thickness=1)
 
 
