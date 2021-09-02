@@ -1,7 +1,7 @@
 import math
 
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from utils import *
 
@@ -141,7 +141,7 @@ def plot_angular_speed_against_t(ts: np.ndarray, thetas: np.ndarray, output_path
 
 if __name__ == "__main__":
     template_img = cv2.imread("res/qr-code-320.png")
-    method_b = MethodB(template_img, "res/rotate_qr_320.mp4", "res/rotate_qr_320_matching.avi")
+    method_b = MethodB(template_img, "res/rotate-qr-320.avi", "res/rotate-qr-320-matching.avi")
     ts, thetas = method_b.calc()
-    plot_theta_against_t(ts, thetas)
-    plot_angular_speed_against_t(ts, thetas)
+    plot_theta_against_t(ts, thetas, "res/rotate-qr-320-fig1.png")
+    plot_angular_speed_against_t(ts, thetas, "res/rotate-qr-320-fig2.png")
