@@ -9,7 +9,7 @@ TM_METHOD = [cv2.TM_CCORR_NORMED, cv2.TM_CCOEFF_NORMED][1]
 SLIDING_WINDOW_SEC = 3.0
 
 
-class S:
+class MethodA:
     def __init__(self, video_path: str):
         self.frame_list = []
         self.get_frame_list(video_path)
@@ -45,7 +45,7 @@ def similarity(img1: np.ndarray, img2: np.ndarray):
 
 
 def plot_s_against_delta(video_path: str, output_path=None):
-    s = S(video_path)
+    s = MethodA(video_path)
     delta = np.linspace(0, SLIDING_WINDOW_SEC, num=50)
     y = np.array([s.calc(d) for d in delta])
 
@@ -77,5 +77,5 @@ if __name__ == "__main__":
 
     # Dummy video for testing, the rotation speed is 2*PI (rad/s)
     # Video length is 15 sec. The object spins for 15 times.
-    dummy_path = "res/rotate_qr_320.mp4"
-    plot_s_against_delta("res/rotate_qr_320.mp4", "res/rotate_qr_320_fig.png")
+    dummy_path = "res/rotate-qr-320.avi"
+    plot_s_against_delta(dummy_path, "res/rotate-qr-320-fig0.png")
