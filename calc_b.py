@@ -82,7 +82,10 @@ class MethodB:
                     rot_angle_list.append(np.nan)
                 else:
                     matches_mask = mask.ravel().tolist()
-                    h, w, c = self.template_img.shape
+                    if len(self.template_img.shape) == 3:
+                        h, w, c = self.template_img.shape
+                    else:
+                        h, w = self.template_img.shape
                     pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
                     dst = cv2.perspectiveTransform(pts, homography_mat)
                     frame = cv2.polylines(frame, [np.int32(dst)], True, 255, 3, cv2.LINE_AA)

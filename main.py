@@ -180,7 +180,7 @@ def cell_crop_video(video_path: str, output_path: str, threshold=127, roi=None):
     video_writer.release()
 
 
-def cell_template_image(video_path: str, threshold=127, roi=None):
+def cell_template_image(video_path: str, threshold=127, roi=None, ret_binarization=False):
     # Input
     video_capture = get_video_capture(video_path)
     width, height = get_video_dimension(video_path)
@@ -206,7 +206,7 @@ def cell_template_image(video_path: str, threshold=127, roi=None):
     hull_list = [cv2.convexHull(ptr_list)]
     # Get boundingRect, slightly expand
     bounding_rect = expand_rect(cv2.boundingRect(hull_list[0]), pixel=2)
-    return crop_img_rect(frame_copy, bounding_rect)
+    return crop_img_rect(frame if ret_binarization else frame_copy, bounding_rect)
 
 
 if __name__ == "__main__":
@@ -233,15 +233,17 @@ if __name__ == "__main__":
 
     for f in file_list:
         f_basename = os.path.basename(f)
-        # output_path = os.path.join(output_root, filename_append(f_basename, "contr"))
-        if METHOD == "a":
-            output_path = os.path.join(output_root, filename_append(f_basename, "crop"))
-        elif METHOD == "b":
-            output_path = os.path.join(output_root, filename_append(f_basename, "matching"))
-        else:
-            output_path = os.path.join(output_root, filename_append(f_basename, "output"))
+        # output_path_contr = os.path.join(output_root, filename_append(f_basename, "contr"))
+        output_path_bin = os.path.join(output_root, filename_append(f_basename, "bin"))
 
-        output_path_fig = filename_append(output_path, "fig", "png")
+        if METHOD == "a":
+            output_path_final = os.path.join(output_root, filename_append(f_basename, "crop"))
+        elif METHOD == "b":
+            output_path_final = os.path.join(output_root, filename_append(f_basename, "matching"))
+        else:
+            output_path_final = os.path.join(output_root, filename_append(f_basename, "output"))
+
+        output_path_fig = filename_append(output_path_final, "fig", "png")
         roi, threshold = gui(f, cached_roi=roi_cache.get(f, None))
         with open(roi_cache_path, "wb") as pkl:
             roi_cache[f] = roi
@@ -250,12 +252,20 @@ if __name__ == "__main__":
 
         if METHOD == "a":
             # Method A
-            cell_crop_video(f, output_path=output_path, threshold=threshold, roi=roi)
-            plot_s_against_delta(video_path=output_path, output_path=filename_append(output_path_fig, "a"))
+            cell_crop_video(f, output_path=output_path_final, threshold=threshold, roi=roi)
+            plot_s_against_delta(video_path=output_path_final, output_path=filename_append(output_path_fig, "a"))
         elif METHOD == "b":
             # Method B
             img_template = cell_template_image(f, threshold=threshold, roi=roi)
-            method_b = MethodB(img_template, video_path=f, output_path=output_path)
+            method_b = MethodB(img_template, video_path=f, output_path=output_path_final)
             ts, thetas = method_b.calc()
             plot_theta_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b1"))
             plot_angular_speed_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b2"))
+
+            # Method B (+binarization)
+            # img_template = cell_template_image(f, threshold=threshold, roi=roi, ret_binarization=True)
+            # binarization_video(f, output_path=output_path_bin, threshold=threshold)
+            # method_b = MethodB(img_template, video_path=output_path_bin, output_path=output_path_final)
+            # ts, thetas = method_b.calc()
+            # plot_theta_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b1"))
+            # plot_angular_speed_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b2"))
