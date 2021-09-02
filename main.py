@@ -25,7 +25,7 @@ control-U7L6
 
 from tqdm import tqdm
 
-from calc import *
+from calc_a import *
 from gui import gui
 
 

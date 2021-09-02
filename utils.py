@@ -23,18 +23,16 @@ def binarization_img(img, threshold=127, mode=cv2.THRESH_BINARY):
 
 
 def draw_mask_roi(roi, width: int, height: int):
-    # TODO is the width and height correct? Should be black = np.zeros((height, width, 3), np.uint8)
     # Black in RGB
-    black = np.zeros((width, height, 3), np.uint8)
+    black = np.zeros((height, width, 3), np.uint8)
     # Draw mask from ROI
     black = cv2.rectangle(black, roi[:2], roi[2:], (255, 255, 255), -1)
     return binarization_img(black)
 
 
 def draw_mask_contours(contours, width: int, height: int):
-    # TODO is the width and height correct? Should be black = np.zeros((height, width, 3), np.uint8)
     # Black in RGB
-    black = np.zeros((width, height, 3), np.uint8)
+    black = np.zeros((height, width, 3), np.uint8)
     # Draw mask from ROI
     black = cv2.drawContours(black, contours, -1, (255, 255, 255), -1)
     return binarization_img(black)
