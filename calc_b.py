@@ -5,8 +5,11 @@ from tqdm import tqdm
 
 from utils import *
 
-MIN_MATCH_COUNT = 5
-N_FEATURES = 500
+MIN_MATCH_COUNT = 5  # At least 4 corresponding point required to calculate homography
+FILTER_MATCH = True
+SCALE_FACTOR = 1.0
+# https://docs.opencv.org/4.5.0/d7/d60/classcv_1_1SIFT.html
+SIFT_PARAMETERS = dict(nfeatures=500, contrastThreshold=0.04, edgeThreshold=10, sigma=1.0)
 
 
 def rot_angle_from_homography(M):
@@ -23,7 +26,9 @@ class MethodB:
 
     def __init__(self, template_img: np.ndarray, video_path: str, output_path: str = None):
         self.template_img = template_img
-        self.detector = cv2.SIFT_create(nfeatures=N_FEATURES)
+        if SCALE_FACTOR > 1.0:
+            self.template_img = scale_img(self.template_img, SCALE_FACTOR)
+        self.detector = cv2.SIFT_create(**SIFT_PARAMETERS)
         self.template_kp, self.template_des = self.detector.detectAndCompute(template_img, mask=None)
         self.matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_FLANNBASED)
 
@@ -41,6 +46,8 @@ class MethodB:
             ret, frame = video_capture.read()
             if not ret:
                 break
+            if SCALE_FACTOR > 1.0:
+                frame = scale_img(frame, SCALE_FACTOR)
             self.frame_list.append(frame)
 
     def sec_to_frame_i(self, sec):
@@ -57,23 +64,33 @@ class MethodB:
 
             # Filter matches using the Lowe's ratio test
             ratio_thresh = 0.7
-            good_matches = []
-            for m, n in knn_matches:
-                if m.distance < ratio_thresh * n.distance:
-                    good_matches.append(m)
+            if FILTER_MATCH:
+                good_matches = []
+                for m, n in knn_matches:
+                    if m.distance < ratio_thresh * n.distance:
+                        good_matches.append(m)
+            else:
+                good_matches = [m for m, _ in knn_matches]
 
             if len(good_matches) > MIN_MATCH_COUNT:
                 src_pts = np.float32([self.template_kp[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
                 dst_pts = np.float32([frame_kp[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
                 homography_mat, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-                matches_mask = mask.ravel().tolist()
-                h, w, c = self.template_img.shape
-                pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
-                dst = cv2.perspectiveTransform(pts, homography_mat)
-                frame = cv2.polylines(frame, [np.int32(dst)], True, 255, 3, cv2.LINE_AA)
-                rot_angle_list.append(rot_angle_from_homography(homography_mat))
+                if homography_mat is None:
+                    print("Homography Mat is None at frame {}".format(i))
+                    matches_mask = None
+                    rot_angle_list.append(np.nan)
+                else:
+                    matches_mask = mask.ravel().tolist()
+                    h, w, c = self.template_img.shape
+                    pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+                    dst = cv2.perspectiveTransform(pts, homography_mat)
+                    frame = cv2.polylines(frame, [np.int32(dst)], True, 255, 3, cv2.LINE_AA)
+                    rot_angle_list.append(rot_angle_from_homography(homography_mat))
             else:
-                print("Not enough matches are found at frame {} - {}/{}".format(i, len(good_matches), MIN_MATCH_COUNT))
+                print("Not enough matches are found at frame {} - {}/{}, knn_matches {}".format(i, len(good_matches),
+                                                                                                MIN_MATCH_COUNT,
+                                                                                                len(knn_matches)))
                 matches_mask = None
                 rot_angle_list.append(np.nan)
 

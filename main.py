@@ -23,10 +23,11 @@ control-U7L6
 40～45秒間の平均回転速度　5.89 radian/sec
 """
 
-from tqdm import tqdm
-
 from calc_a import *
+from calc_b import *
 from gui import gui
+
+METHOD = "b"
 
 
 def binarization_video(video_path: str, output_path: str, threshold=127):
@@ -179,6 +180,35 @@ def cell_crop_video(video_path: str, output_path: str, threshold=127, roi=None):
     video_writer.release()
 
 
+def cell_template_image(video_path: str, threshold=127, roi=None):
+    # Input
+    video_capture = get_video_capture(video_path)
+    width, height = get_video_dimension(video_path)
+
+    if roi is None:
+        roi_ratio = (0.33, 0.33, 0.66, 0.66)  # Ratio on width and height. x1,y1,x2,y2.
+        roi = (int(roi_ratio[0] * width), int(roi_ratio[1] * height)),
+        (int(roi_ratio[2] * width), int(roi_ratio[3] * height))
+
+    set_frame_position(video_capture, 0)
+    ret, frame = video_capture.read()
+    frame_copy = frame.copy()
+    frame = binarization_img(frame, threshold, cv2.THRESH_BINARY_INV)
+    frame = apply_mask_img(frame, draw_mask_roi(roi, width, height))
+
+    contours, hierarchy = cv2.findContours(frame, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
+
+    # Filter out the contours that unlikely to be a circle
+    contours = [contours_i for contours_i in contours if len(contours_i) > 4]
+    # Get all points from contours
+    ptr_list = np.concatenate(contours)
+    # Find the convex hull object for all points in contours
+    hull_list = [cv2.convexHull(ptr_list)]
+    # Get boundingRect, slightly expand
+    bounding_rect = expand_rect(cv2.boundingRect(hull_list[0]), pixel=2)
+    return crop_img_rect(frame_copy, bounding_rect)
+
+
 if __name__ == "__main__":
     import pickle
 
@@ -204,12 +234,28 @@ if __name__ == "__main__":
     for f in file_list:
         f_basename = os.path.basename(f)
         # output_path = os.path.join(output_root, filename_append(f_basename, "contr"))
-        output_path = os.path.join(output_root, filename_append(f_basename, "crop"))
+        if METHOD == "a":
+            output_path = os.path.join(output_root, filename_append(f_basename, "crop"))
+        elif METHOD == "b":
+            output_path = os.path.join(output_root, filename_append(f_basename, "matching"))
+        else:
+            output_path = os.path.join(output_root, filename_append(f_basename, "output"))
+
         output_path_fig = filename_append(output_path, "fig", "png")
         roi, threshold = gui(f, cached_roi=roi_cache.get(f, None))
         with open(roi_cache_path, "wb") as pkl:
             roi_cache[f] = roi
             pickle.dump(roi_cache, pkl)
         # cell_detect_video(f, output_path=output_path, threshold=threshold, roi=roi)
-        cell_crop_video(f, output_path=output_path, threshold=threshold, roi=roi)
-        plot_s_against_delta(video_path=output_path, output_path=output_path_fig)
+
+        if METHOD == "a":
+            # Method A
+            cell_crop_video(f, output_path=output_path, threshold=threshold, roi=roi)
+            plot_s_against_delta(video_path=output_path, output_path=filename_append(output_path_fig, "a"))
+        elif METHOD == "b":
+            # Method B
+            img_template = cell_template_image(f, threshold=threshold, roi=roi)
+            method_b = MethodB(img_template, video_path=f, output_path=output_path)
+            ts, thetas = method_b.calc()
+            plot_theta_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b1"))
+            plot_angular_speed_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b2"))

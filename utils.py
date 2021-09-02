@@ -22,6 +22,12 @@ def binarization_img(img, threshold=127, mode=cv2.THRESH_BINARY):
     return img
 
 
+def scale_img(img, scale_factor, interpolation=cv2.INTER_AREA):
+    width = int(img.shape[1] * scale_factor)
+    height = int(img.shape[0] * scale_factor)
+    return cv2.resize(img, (width, height), interpolation)
+
+
 def draw_mask_roi(roi, width: int, height: int):
     # Black in RGB
     black = np.zeros((height, width, 3), np.uint8)
@@ -53,6 +59,15 @@ def apply_mask_img(img, mask):
 def crop_img_rect(img, rect):
     x, y, w, h = rect
     return img[y:y + h, x:x + w]
+
+
+def expand_rect(rect, pixel=1):
+    x, y, w, h = rect
+    w += pixel * 2
+    h += pixel * 2
+    x = max(0, x - pixel)
+    y = max(0, y - pixel)
+    return [x, y, w, h]
 
 
 def get_video_capture(video_path: str) -> cv2.VideoCapture:
@@ -91,4 +106,4 @@ def filename_append(filename: str, append: str, ext_override: str = None):
     basename, ext = filename.rsplit(".", 1)
     if ext_override is not None:
         ext = ext_override
-    return f"{basename}_{append}.{ext}"
+    return f"{basename}-{append}.{ext}"
