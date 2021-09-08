@@ -1,6 +1,8 @@
 import os
 
 import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 from scipy.signal import find_peaks
 
 from utils import *
@@ -40,6 +42,32 @@ class MethodA:
         return np.mean([similarity(self.x(tau), self.x(tau + delta)) for tau in taus])
 
 
+class MethodA2:
+    def __init__(self, video_path: str):
+        self.frame_list = []
+        self.get_frame_list(video_path)
+        self.frame_list = np.array(self.frame_list)
+        self.frame_shape = self.frame_list[0].shape
+        self.video_length = len(self.frame_list)
+        self.video_framerate = get_video_framerate(video_path)
+        self.pairwise_sim = pd.DataFrame()
+
+    def get_frame_list(self, video_path: str):
+        video_capture = get_video_capture(video_path)
+        while video_capture.isOpened():
+            ret, frame = video_capture.read()
+            if not ret:
+                break
+            self.frame_list.append(frame)
+
+    def calc(self):
+        for t1 in range(len(self.frame_list)):
+            T = min(int(t1 + 3 * self.video_framerate), len(self.frame_list))
+            for t2 in range(t1, T):
+                self.pairwise_sim.loc[t1, t2] = similarity(self.frame_list[t1], self.frame_list[t2])
+        return self.pairwise_sim
+
+
 def similarity(img1: np.ndarray, img2: np.ndarray):
     return np.squeeze(cv2.matchTemplate(img1, img2, TM_METHOD))
 
@@ -70,6 +98,15 @@ def plot_s_against_delta(video_path: str, output_path=None):
         plt.savefig(output_path)
 
 
+def plot_pairwise_similarity_heatmap(video_path: str, output_path=None):
+    pairwise_sim = MethodA2(dummy_path).calc()
+    ax = sns.heatmap(pairwise_sim)
+    if output_path is None:
+        plt.show()
+    else:
+        plt.savefig(output_path)
+
+
 if __name__ == "__main__":
     # t1 = np.random.randint(0, 255, size=(20, 20, 1), dtype=np.uint8)
     # t2 = np.random.randint(0, 255, size=(20, 20, 1), dtype=np.uint8)
@@ -78,4 +115,5 @@ if __name__ == "__main__":
     # Dummy video for testing, the rotation speed is 2*PI (rad/s)
     # Video length is 15 sec. The object spins for 15 times.
     dummy_path = "res/rotate-qr-320.avi"
-    plot_s_against_delta(dummy_path, "res/rotate-qr-320-fig0.png")
+    # plot_s_against_delta(dummy_path, "res/rotate-qr-320-fig0.png")
+    plot_pairwise_similarity_heatmap(dummy_path, "res/rotate-qr-320-fig3.png")
