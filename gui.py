@@ -24,14 +24,17 @@ def gui(video_path: str, cached_roi=None):
                                           thickness=-1)
             cv2.imshow(win_cell, frame_copy)
 
-    win_src = "Source Image"
-    cv2.namedWindow(win_src)
-
     # Get 1st frame
     video_capture = get_video_capture(video_path)
     video_dimension = get_video_dimension(video_path)
     width, height = video_dimension
     ret, frame = video_capture.read()
+
+    win_src = "Source Image"
+    win_x, win_y = 100, 100
+    win_offset_x, win_offset_y = 8, 40
+    cv2.namedWindow(win_src)
+    cv2.moveWindow(win_src, win_x, win_y)
 
     """
     ROI
@@ -62,18 +65,23 @@ def gui(video_path: str, cached_roi=None):
     """
     win_bin = "Binarization (Preview)"
     win_cell = "Cell Area (Preview)"
+    win_thresh = "Threshold"
     cv2.namedWindow(win_bin)
+    cv2.moveWindow(win_bin, win_x + width + win_offset_x, win_y)
     cv2.namedWindow(win_cell)
+    cv2.moveWindow(win_cell, win_x + (width + win_offset_x) * 2, win_y)
+    cv2.namedWindow(win_thresh)
+    cv2.moveWindow(win_thresh, win_x, win_y + height + win_offset_y)
 
     max_thresh = 255
     init_thresh = 180  # Initial threshold
-    cv2.createTrackbar('Threshold', win_src, init_thresh, max_thresh,
+    cv2.createTrackbar('Threshold', win_thresh, init_thresh, max_thresh,
                        lambda val: thresh_callback(val, frame))
     # Initial call
     thresh_callback(init_thresh, frame)
     print("Adjust threshold and then press SPACE or ENTER button!")
     cv2.waitKey()
-    thresh = cv2.getTrackbarPos('Threshold', win_src)
+    thresh = cv2.getTrackbarPos('Threshold', win_thresh)
     cv2.destroyAllWindows()
     print("Threshold", thresh)
 
