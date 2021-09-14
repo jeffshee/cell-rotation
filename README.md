@@ -20,7 +20,7 @@ The selection will be cached into python pickle file named `roi.pkl`, so that yo
 2. **Adjust the threshold for the binarization**  
 The optimal threshold gives the most accurate cell area. Press ENTER to proceed.
    ![](res/gui_roi_thresh.gif)
-3. The processing will be started. The result will be outputted the directory named `output`.
+3. The processing will be started. The results will be outputted into the directory named `output`.
 
 ## Output
 The output result is a heatmap of pairwise similarity of frame `t1` and frame `t2`. For example,
