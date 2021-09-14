@@ -9,6 +9,7 @@ from utils import *
 
 TM_METHOD = [cv2.TM_CCORR_NORMED, cv2.TM_CCOEFF_NORMED][1]
 SLIDING_WINDOW_SEC = 3.0
+METHOD_A2_WINDOW_SEC = 1.0
 
 
 class MethodA:
@@ -46,11 +47,11 @@ class MethodA2:
     def __init__(self, video_path: str):
         self.frame_list = []
         self.get_frame_list(video_path)
-        self.frame_list = np.array(self.frame_list)
         self.frame_shape = self.frame_list[0].shape
         self.video_length = len(self.frame_list)
         self.video_framerate = get_video_framerate(video_path)
         self.pairwise_sim = pd.DataFrame()
+        self.pairwise_sim_compact = pd.DataFrame()
 
     def get_frame_list(self, video_path: str):
         video_capture = get_video_capture(video_path)
@@ -62,10 +63,13 @@ class MethodA2:
 
     def calc(self):
         for t1 in range(len(self.frame_list)):
-            T = min(int(t1 + 3 * self.video_framerate), len(self.frame_list))
-            for t2 in range(t1, T):
+            T = min(int(t1 + METHOD_A2_WINDOW_SEC * self.video_framerate), len(self.frame_list))
+            for i, t2 in enumerate(range(t1, T)):
                 self.pairwise_sim.loc[t1, t2] = similarity(self.frame_list[t1], self.frame_list[t2])
-        return self.pairwise_sim
+                if T - t1 == int(METHOD_A2_WINDOW_SEC * self.video_framerate):
+                    # Drop last n sec of frames
+                    self.pairwise_sim_compact.loc[t1, i] = self.pairwise_sim.loc[t1, t2]
+        return self.pairwise_sim, self.pairwise_sim_compact
 
 
 def similarity(img1: np.ndarray, img2: np.ndarray):
@@ -99,12 +103,23 @@ def plot_s_against_delta(video_path: str, output_path=None):
 
 
 def plot_pairwise_similarity_heatmap(video_path: str, output_path=None):
-    pairwise_sim = MethodA2(dummy_path).calc()
+    pairwise_sim, _ = MethodA2(video_path).calc()
     ax = sns.heatmap(pairwise_sim)
     if output_path is None:
         plt.show()
     else:
         plt.savefig(output_path)
+    plt.close()
+
+
+def plot_pairwise_similarity_heatmap_compact(video_path: str, output_path=None):
+    _, pairwise_sim_compact = MethodA2(video_path).calc()
+    ax = sns.heatmap(pairwise_sim_compact)
+    if output_path is None:
+        plt.show()
+    else:
+        plt.savefig(output_path)
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -114,6 +129,14 @@ if __name__ == "__main__":
 
     # Dummy video for testing, the rotation speed is 2*PI (rad/s)
     # Video length is 15 sec. The object spins for 15 times.
-    dummy_path = "res/rotate-qr-320.avi"
+    # dummy_path = "res/rotate-qr-320.avi"
     # plot_s_against_delta(dummy_path, "res/rotate-qr-320-fig0.png")
-    plot_pairwise_similarity_heatmap(dummy_path, "res/rotate-qr-320-fig3.png")
+    # plot_pairwise_similarity_heatmap(dummy_path, "res/rotate-qr-320-fig3.png")
+
+    files = filter(lambda x: str(x).endswith("crop.avi"), os.listdir("output/#old"))
+    for f in files:
+        # plot_pairwise_similarity_heatmap(f"output/#old/{f}", f"output/{filename_append(f, 'pairwise', 'png')}")
+        # plot_pairwise_similarity_heatmap_compact(f"output/#old/{f}",
+        #                                          f"output/{filename_append(f, 'pairwise-compact', 'png')}")
+        plot_pairwise_similarity_heatmap_compact(f"output/#old/{f}",
+                                                 f"output/{filename_append(f, 'pairwise-compact-1s', 'png')}")
