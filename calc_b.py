@@ -9,7 +9,7 @@ MIN_MATCH_COUNT = 5  # At least 4 corresponding point required to calculate homo
 FILTER_MATCH = True
 SCALE_FACTOR = 1.0
 # https://docs.opencv.org/4.5.0/d7/d60/classcv_1_1SIFT.html
-SIFT_PARAMETERS = dict(nfeatures=500, contrastThreshold=0.04, edgeThreshold=10, sigma=1.0)
+SIFT_PARAMETERS = dict(nfeatures=500, contrastThreshold=0.04, edgeThreshold=10, sigma=1.6)
 
 
 def rot_angle_from_homography(M):

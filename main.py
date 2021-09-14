@@ -1,33 +1,13 @@
-"""
-目視回転速度.txt
-
-解析方法
-目視で，細胞上の特徴となる１点を決定
-１コマごとにコマ送りしてその特徴点のx, y座標を記録
-フーリエ変換して周波数を抽出
-
-U5L5
-0～5秒間の平均回転速度　10.3 radian/sec
-40～45秒間の平均回転速度　7.36 radian/sec
-
-U8L8
-0～5秒間の平均回転速度　5.89 radian/sec
-40～45秒間の平均回転速度　4.42 radian/sec
-
-control-U7L5
-0～5秒間の平均回転速度　7.36 radian/sec
-40～45秒間の平均回転速度　7.36 radian/sec
-
-control-U7L6
-0～5秒間の平均回転速度　5.89 radian/sec
-40～45秒間の平均回転速度　5.89 radian/sec
-"""
+from multiprocessing import Process
 
 from calc_a import *
 from calc_b import *
 from gui import gui
 
-METHOD = "b"
+# NOTE: Method B is not usable for cell video yet.
+METHOD = "a"
+# Skip loading cached ROI from roi.pkl.
+IGNORE_CACHED_ROI = False
 
 
 def binarization_video(video_path: str, output_path: str, threshold=127):
@@ -92,7 +72,6 @@ def cell_detect_video(video_path: str, output_path: str, threshold=127, roi=None
         #     hull_list.append(hull)
 
         # Filter out the contours that unlikely to be a circle
-        # TODO: check cv2.approxPolyDP
         contours = [contours_i for contours_i in contours if len(contours_i) > 4]
         # Get all points from contours
         ptr_list = np.concatenate(contours)
@@ -216,7 +195,9 @@ if __name__ == "__main__":
     output_root = "output"
     file_list = [os.path.join(dataset_root, f) for f in os.listdir(dataset_root)]
     roi_cache_path = "roi.pkl"
-    if os.path.isfile(roi_cache_path):
+    post_processing = []
+
+    if os.path.isfile(roi_cache_path) and not IGNORE_CACHED_ROI:
         with open(roi_cache_path, "rb") as pkl:
             roi_cache = pickle.load(pkl)
     else:
@@ -253,7 +234,12 @@ if __name__ == "__main__":
         if METHOD == "a":
             # Method A
             cell_crop_video(f, output_path=output_path_final, threshold=threshold, roi=roi)
-            plot_s_against_delta(video_path=output_path_final, output_path=filename_append(output_path_fig, "a"))
+            post_processing.append(Process(target=plot_pairwise_similarity_heatmap_compact,
+                                           kwargs=dict(video_path=output_path_final,
+                                                       output_path=filename_append(output_path_fig, "a"))))
+            # plot_pairwise_similarity_heatmap_compact(video_path=output_path_final,
+            #                                          output_path=filename_append(output_path_fig, "a"))
+            # plot_s_against_delta(video_path=output_path_final, output_path=filename_append(output_path_fig, "a"))
         elif METHOD == "b":
             # Method B
             img_template = cell_template_image(f, threshold=threshold, roi=roi)
@@ -269,3 +255,11 @@ if __name__ == "__main__":
             # ts, thetas = method_b.calc()
             # plot_theta_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b1"))
             # plot_angular_speed_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b2"))
+
+    # Start post-processing
+    print("Start processing. This might take a while...")
+    if post_processing:
+        for p in post_processing:
+            p.start()
+            p.join()
+    print("Done.")
