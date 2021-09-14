@@ -89,5 +89,4 @@ def gui(video_path: str, cached_roi=None):
 
 
 if __name__ == "__main__":
-    # gui("dataset/control-U7L5-nonPressure.avi")
     gui("res/rotate-qr-320.avi")
