@@ -22,4 +22,9 @@ The optimal threshold gives the most accurate cell area. Press ENTER to proceed.
    ![](res/gui_roi_thresh.gif)
 3. The processing will be started. The result will be outputted the directory named `output`.
 
+## Output
+The output result is a heatmap of pairwise similarity of frame `t1` and frame `t2`. For example,
 
+![](res/rotate-qr-320-crop-fig-a-3.0s.png)
+
+From this figure, we can observe some peaks in pairwise similarity at `delta=30` and `delta=60`. These peaks indicate the rotation cycles. Given that the rotation cycle is `30 (frames)`, fps is `30.0`, we can calculate that the rotation speed is `360 (deg/s)`.
