@@ -75,7 +75,16 @@ def get_video_capture(video_path: str) -> cv2.VideoCapture:
 
 
 def get_video_writer(output_path: str, framerate: float, dimension: Tuple[int, int]) -> cv2.VideoWriter:
-    fourcc = cv2.VideoWriter_fourcc(*"XVID")
+    # FFmpeg: http://ffmpeg.org/doxygen/trunk/isom_8c-source.html
+    # ImageJ: Uncompressed palettized 8-bit RGBA (1987535218) fourcc: rawv
+    # RGBA
+    # fourcc = cv2.VideoWriter_fourcc(*"RGBA")  # Working (kind of)
+    # PNG
+    fourcc = cv2.VideoWriter_fourcc(*"png ")  # Working (best compatibility)
+    # Uncompressed RGB
+    # fourcc = cv2.VideoWriter_fourcc(*"raw ") # Didn't encode
+    # Uncompressed YUV422
+    # fourcc = cv2.VideoWriter_fourcc(*"yuv2")  # Encoded but didn't play
     return cv2.VideoWriter(output_path, fourcc, framerate, dimension)
 
 

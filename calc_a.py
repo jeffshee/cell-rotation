@@ -85,9 +85,14 @@ Method A (Ver. 2)
 
 
 class MethodA2:
-    def __init__(self, video_path: str):
+    def __init__(self, video_path: str = None, frame_list: list = None):
+        assert video_path or frame_list
         self.frame_list = []
-        self.get_frame_list(video_path)
+        if frame_list:
+            print("Using raw frames")
+            self.frame_list = frame_list
+        else:
+            self.get_frame_list(video_path)
         self.frame_shape = self.frame_list[0].shape
         self.video_length = len(self.frame_list)
         self.video_framerate = get_video_framerate(video_path)
@@ -115,8 +120,8 @@ def similarity(img1: np.ndarray, img2: np.ndarray):
     return np.squeeze(cv2.matchTemplate(img1, img2, TM_METHOD))
 
 
-def plot_pairwise_similarity_heatmap_compact(video_path: str, output_path=None):
-    pairwise_sim_compact = MethodA2(video_path).calc()
+def plot_pairwise_similarity_heatmap_compact(video_path: str, frame_list: list = None, output_path=None):
+    pairwise_sim_compact = MethodA2(video_path, frame_list).calc()
     video_framerate = get_video_framerate(video_path)
     plt.figure()
     plt.title(f"Heatmap of pairwise similarity (t1 and t2) \n{(os.path.basename(video_path))}")

@@ -113,6 +113,7 @@ def cell_crop_video(video_path: str, output_path: str, threshold=127, roi=None):
     set_frame_position(video_capture, 0)
     bounding_rects = []
     masked_frames = []
+    output_frames = []
     while video_capture.isOpened() and get_frame_position(video_capture) in range(video_length):
         # Progress
         bar.update(1)
@@ -156,7 +157,9 @@ def cell_crop_video(video_path: str, output_path: str, threshold=127, roi=None):
         new_bounding_rect = (mid_x - mean_width // 2, mid_y - mean_height // 2, mean_width, mean_height)
         frame_cropped = crop_img_rect(frame, new_bounding_rect)
         video_writer.write(frame_cropped)
+        output_frames.append(frame_cropped)
     video_writer.release()
+    return output_frames
 
 
 def cell_template_image(video_path: str, threshold=127, roi=None, ret_binarization=False):
@@ -233,10 +236,14 @@ if __name__ == "__main__":
 
         if METHOD == "a":
             # Method A
-            cell_crop_video(f, output_path=output_path_final, threshold=threshold, roi=roi)
+            frame_list = cell_crop_video(f, output_path=output_path_final, threshold=threshold, roi=roi)
             post_processing.append(Process(target=plot_pairwise_similarity_heatmap_compact,
                                            kwargs=dict(video_path=output_path_final,
+                                                       frame_list=frame_list,
                                                        output_path=filename_append(output_path_fig, "a"))))
+            # post_processing.append(Process(target=plot_pairwise_similarity_heatmap_compact,
+            #                                kwargs=dict(video_path=output_path_final,
+            #                                            output_path=filename_append(output_path_fig, "a"))))
             # plot_pairwise_similarity_heatmap_compact(video_path=output_path_final,
             #                                          output_path=filename_append(output_path_fig, "a"))
             # plot_s_against_delta(video_path=output_path_final, output_path=filename_append(output_path_fig, "a"))
