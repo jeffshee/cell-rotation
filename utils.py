@@ -18,7 +18,8 @@ def bgr_img(img):
 
 def binarization_img(img, threshold=127, mode=cv2.THRESH_BINARY):
     img = grayscale_img(img)
-    _, img = cv2.threshold(img, threshold, 255, mode)
+    retval, img = cv2.threshold(img, threshold, 255, mode)
+    print("Threshold", retval)
     return img
 
 
@@ -59,6 +60,11 @@ def apply_mask_img(img, mask):
 def crop_img_rect(img, rect):
     x, y, w, h = rect
     return img[y:y + h, x:x + w]
+
+
+def crop_img_roi(img, roi):
+    x1, y1, x2, y2 = roi
+    return img[y1:y2, x1:x2]
 
 
 def expand_rect(rect, pixel=1):
