@@ -1,6 +1,7 @@
 import os
 import sys
 from typing import Tuple
+from pprint import pprint
 
 import cv2
 # OpenCV2+PyQt5 issue workaround for Linux
@@ -17,16 +18,26 @@ from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
     QErrorMessage, QHBoxLayout, QRadioButton, QGroupBox, QListWidgetItem, \
-    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton
+    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QSizePolicy, QFileDialog
 
-app = QApplication(sys.argv)
+# Settings
+APPLY_GAUSSIAN_BLUR = False  # Apply gaussian blur as preprocessing (Remove high-frequency noise)
+GAUSSIAN_BLUR_KSIZE = 5  # Kernel size of gaussian blur
+GAUSSIAN_BLUR_SIGMA = 0  # Sigma param of gaussian blur
+PREVIEW_SCALE = 4  # Scale factor of previews
+THRESH_TYPE = cv2.THRESH_BINARY_INV  # Base thresh type for the task
 
+# Defaults
+DEFAULT_ADAPTIVE_THRESH = False
+DEFAULT_AUTO_THRESH = True
+DEFAULT_ADAPTIVE_METHOD = cv2.ADAPTIVE_THRESH_MEAN_C
+DEFAULT_THRESHOLD = 180  # cv2.threshold
+DEFAULT_BLOCK_SIZE = 7  # cv2.adaptiveThreshold
+DEFAULT_C = 15  # cv2.adaptiveThreshold
 
-# TODO Keep parameters of each ROI
-# TODO Return all configuration
 
 class RoiWidget(QLabel):
-    RoiChanged = pyqtSignal(str)
+    RoiChanged = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -53,16 +64,16 @@ class RoiWidget(QLabel):
         # Create new entry
         self._roi_dict[name] = dict(rgb=(r, g, b), roi=QRect())
         self._cur_key = name
-        print(f"[ROI] Add", name)
+        print(f"[ROI] add", name)
         return True
 
     def switch_to(self, name) -> bool:
         # Name not found, return false as failed
         if name not in self._roi_dict:
             return False
-        print(f"[ROI] Switch to", name)
+        print(f"[ROI] switch_to", name)
         self._cur_key = name
-        self.RoiChanged.emit(self._cur_key)
+        self.RoiChanged.emit()
         return True
 
     def remove(self, name):
@@ -72,9 +83,9 @@ class RoiWidget(QLabel):
 
         # Remove entry from dict
         del self._roi_dict[name]
-        print(f"[ROI] Remove", name)
+        print(f"[ROI] remove", name)
         self._cur_key = None
-        self.RoiChanged.emit(self._cur_key)
+        self.RoiChanged.emit()
 
         # Redraw
         self.update()
@@ -109,7 +120,7 @@ class RoiWidget(QLabel):
         cur_item["roi"] = rect_roi
         # Debug
         # print("[ROI]", self._roi_dict[self._cur_key])
-        self.RoiChanged.emit(self._cur_key)
+        self.RoiChanged.emit()
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -177,14 +188,16 @@ class ControlPanel(QVBoxLayout):
         # Threshold method
         self.radio_manual = QRadioButton("Manual threshold")
         self.radio_auto = QRadioButton("Auto threshold (Otsu's method)")
-        self.radio_adap = QRadioButton("Adaptive threshold")
+        self.radio_adap_mean = QRadioButton("Adaptive threshold (MEAN_C)")
+        self.radio_adap_gaussian = QRadioButton("Adaptive threshold (GAUSSIAN_C)")
         vbox = QVBoxLayout()
         vbox.addWidget(self.radio_manual)
         vbox.addWidget(self.radio_auto)
-        vbox.addWidget(self.radio_adap)
-        group_box_thresh_method = QGroupBox("Threshold method")
-        group_box_thresh_method.setLayout(vbox)
-        self.addWidget(group_box_thresh_method)
+        vbox.addWidget(self.radio_adap_mean)
+        vbox.addWidget(self.radio_adap_gaussian)
+        self.group_box_thresh_method = QGroupBox("Threshold method")
+        self.group_box_thresh_method.setLayout(vbox)
+        self.addWidget(self.group_box_thresh_method)
 
         # Manual param
         self.threshold_slider = QSlider(Qt.Horizontal)
@@ -216,6 +229,12 @@ class ControlPanel(QVBoxLayout):
         hbox.addWidget(self.frame_slider)
         self.group_box_frame.setLayout(hbox)
         self.addWidget(self.group_box_frame)
+
+    def enable_controls(self, enabled):
+        self.group_box_thresh_method.setEnabled(enabled)
+        self.group_box_threshold.setEnabled(enabled)
+        self.group_box_block_size.setEnabled(enabled)
+        self.group_box_c.setEnabled(enabled)
 
 
 class RoiPanel(QVBoxLayout):
@@ -252,20 +271,20 @@ def int_to_block_size(i):
 class MainWindow(QMainWindow):
     def __init__(self, video_path: str):
         super().__init__()
-        self.setWindowTitle(os.path.realpath(video_path))
-        self.video_capture = cv2.VideoCapture(video_path)
-        self.video_length = get_video_length(self.video_capture)
-        self.frame = None
-        self.frame_roi = None
-        self.adaptive_thresh = True
-        self.auto_thresh = False
-        self.adaptive_method = cv2.ADAPTIVE_THRESH_MEAN_C
-        self.thresh_type = cv2.THRESH_BINARY_INV
-        self.preview_scale = 4
+        self.setWindowTitle(f"ROIs selector \"{os.path.realpath(video_path)}\"")
+        self._video_capture = cv2.VideoCapture(video_path)
+        self._video_length = get_video_length(self._video_capture)
+        self._frame = None
+        self._frame_roi = None
+        self._adaptive_thresh = DEFAULT_ADAPTIVE_THRESH
+        self._auto_thresh = DEFAULT_AUTO_THRESH
+        self._adaptive_method = DEFAULT_ADAPTIVE_METHOD
 
-        self.threshold = 180  # cv2.threshold
-        self.block_size = 7  # cv2.adaptiveThreshold
-        self.C = 15  # cv2.adaptiveThreshold
+        self._threshold = DEFAULT_THRESHOLD  # cv2.threshold
+        self._block_size = DEFAULT_BLOCK_SIZE  # cv2.adaptiveThreshold
+        self._C = DEFAULT_C  # cv2.adaptiveThreshold
+
+        self._result_dict = dict()
 
         self.layout = QVBoxLayout()
 
@@ -327,26 +346,29 @@ class MainWindow(QMainWindow):
         self.roi_panel.roi_selector.itemSelectionChanged.connect(self.on_item_selection_changed)
         self.control_panel.radio_manual.toggled.connect(self.on_radio_button_toggled_manual)
         self.control_panel.radio_auto.toggled.connect(self.on_radio_button_toggled_auto)
-        self.control_panel.radio_adap.toggled.connect(self.on_radio_button_toggled_adap)
+        self.control_panel.radio_adap_mean.toggled.connect(self.on_radio_button_toggled_adap_mean)
+        self.control_panel.radio_adap_gaussian.toggled.connect(self.on_radio_button_toggled_adap_gaussian)
         self.control_panel.frame_slider.valueChanged.connect(self.on_value_changed_frame)
         self.control_panel.threshold_slider.valueChanged.connect(self.on_value_changed_threshold)
         self.control_panel.block_size_slider.valueChanged.connect(self.on_value_changed_block_size)
         self.control_panel.c_slider.valueChanged.connect(self.on_value_changed_c)
-        self.button_ok.clicked.connect(self.on_clicked_ok)
+        self.button_ok.clicked.connect(self.on_clicked_end)
 
         # Defaults
-        self.control_panel.radio_adap.setChecked(True)
-        self.control_panel.frame_slider.setMaximum(self.video_length)
+        # self.control_panel.radio_adap_mean.setChecked(True)
+        self.control_panel.radio_auto.setChecked(True)
+        self.control_panel.frame_slider.setMaximum(self._video_length)
 
         self.control_panel.threshold_slider.setMaximum(255)
-        self.control_panel.threshold_slider.setValue(self.threshold)
+        self.control_panel.threshold_slider.setValue(self._threshold)
 
         self.control_panel.block_size_slider.setMaximum(block_size_to_int(13))
-        self.control_panel.block_size_slider.setValue(block_size_to_int(self.block_size))
+        self.control_panel.block_size_slider.setValue(block_size_to_int(self._block_size))
         self.control_panel.block_size_slider.setMinimum(block_size_to_int(3))
 
         self.control_panel.c_slider.setMaximum(30)
-        self.control_panel.c_slider.setValue(self.C)
+        self.control_panel.c_slider.setValue(self._C)
+        self.control_panel.enable_controls(False)
 
         self._load_source(0)
 
@@ -355,11 +377,69 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(widget)
         self.showMaximized()
 
+    def _new_current(self):
+        current_name = self.roi_widget.get_current()
+        if current_name:
+            current = dict(adaptive_thresh=DEFAULT_ADAPTIVE_THRESH,
+                           auto_thresh=DEFAULT_AUTO_THRESH,
+                           adaptive_method=DEFAULT_ADAPTIVE_METHOD,
+                           threshold=DEFAULT_THRESHOLD,
+                           block_size=DEFAULT_BLOCK_SIZE,
+                           C=DEFAULT_C
+                           )
+            self._result_dict[current_name] = current
+            print("[GUI] new_current")
+            pprint(self._result_dict[current_name])
+
+    def _save_current(self):
+        current_name = self.roi_widget.get_current()
+        if current_name:
+            current = dict(adaptive_thresh=self._adaptive_thresh,
+                           auto_thresh=self._auto_thresh,
+                           adaptive_method=self._adaptive_method,
+                           threshold=self._threshold,
+                           block_size=self._block_size,
+                           C=self._C
+                           )
+            self._result_dict[current_name] = current
+            print("[GUI] save_current")
+            pprint(self._result_dict[current_name])
+
+    def _load_current(self):
+        current_name = self.roi_widget.get_current()
+        if current_name:
+            saved = self._result_dict[current_name]
+            self._adaptive_thresh = saved["adaptive_thresh"]
+            self._auto_thresh = saved["auto_thresh"]
+            self._adaptive_method = saved["adaptive_method"]
+            self._threshold = saved["threshold"]
+            self._block_size = saved["block_size"]
+            self._C = saved["C"]
+            # Refresh radio buttons and sliders.
+            if self._adaptive_thresh:
+                self.control_panel.radio_adap_mean.setChecked(True)
+            elif self._auto_thresh:
+                self.control_panel.radio_auto.setChecked(True)
+            else:
+                self.control_panel.radio_manual.setChecked(True)
+            self.control_panel.threshold_slider.setValue(self._threshold)
+            self.control_panel.block_size_slider.setValue(block_size_to_int(self._block_size))
+            self.control_panel.c_slider.setValue(self._C)
+            print("[GUI] load_current")
+            pprint(saved)
+
+    def _remove_current(self):
+        current_name = self.roi_widget.get_current()
+        if current_name:
+            print("[GUI] remove_current")
+            pprint(self._result_dict[current_name])
+            del self._result_dict[current_name]
+
     def _load_source(self, val):
-        set_frame_position(self.video_capture, val)
-        ret, frame = self.video_capture.read()
+        set_frame_position(self._video_capture, val)
+        ret, frame = self._video_capture.read()
         if ret:
-            self.frame = frame
+            self._frame = frame
             h, w, c = frame.shape
             self.roi_widget.setPixmap(cv2_to_qpixmap(frame))
             self.roi_widget.resize(w, h)
@@ -376,22 +456,26 @@ class MainWindow(QMainWindow):
             self.cell_display.clear()
         else:
             x, y, w, h = roi.x(), roi.y(), roi.width(), roi.height()
-            self.frame_roi = self.frame[y:y + h, x:x + w]
+            self._frame_roi = self._frame[y:y + h, x:x + w]
 
-            frame_roi = self.frame_roi.copy()
+            frame_roi = self._frame_roi.copy()
             h, w, c = frame_roi.shape
             frame_roi_gray = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2GRAY)
-            frame_blur = cv2.GaussianBlur(frame_roi_gray, (5, 5), 0)
-            if self.adaptive_thresh:
-                frame_bin = cv2.adaptiveThreshold(frame_blur, 255, self.adaptive_method, self.thresh_type,
-                                                  self.block_size, self.C)
-            elif self.auto_thresh:
-                threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, self.thresh_type | cv2.THRESH_OTSU)
+            if APPLY_GAUSSIAN_BLUR:
+                frame_blur = cv2.GaussianBlur(frame_roi_gray, (GAUSSIAN_BLUR_KSIZE, GAUSSIAN_BLUR_KSIZE),
+                                              GAUSSIAN_BLUR_SIGMA)
             else:
-                _, frame_bin = cv2.threshold(frame_blur, self.threshold, 255, self.thresh_type)
+                frame_blur = frame_roi_gray
+            if self._adaptive_thresh:
+                frame_bin = cv2.adaptiveThreshold(frame_blur, 255, self._adaptive_method, THRESH_TYPE,
+                                                  self._block_size, self._C)
+            elif self._auto_thresh:
+                threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, THRESH_TYPE | cv2.THRESH_OTSU)
+            else:
+                _, frame_bin = cv2.threshold(frame_blur, self._threshold, 255, THRESH_TYPE)
 
             self.bin_display.setPixmap(cv2_to_qpixmap(frame_bin))
-            self.bin_display.resize(w * self.preview_scale, h * self.preview_scale)
+            self.bin_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
 
             contours, hierarchy = cv2.findContours(frame_bin, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
             # Filter out the contours that unlikely to be a circle
@@ -409,9 +493,9 @@ class MainWindow(QMainWindow):
                 frame_contours = cv2.drawContours(frame_roi, contours=hull_list, contourIdx=-1, color=(0, 0, 255),
                                                   thickness=-1)
                 self.cell_display.setPixmap(cv2_to_qpixmap(frame_contours))
-                self.cell_display.resize(w * self.preview_scale, h * self.preview_scale)
+                self.cell_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
 
-    def on_roi_changed(self, cur_key):
+    def on_roi_changed(self):
         self._load_preview()
 
     def on_value_changed_frame(self, val):
@@ -420,53 +504,69 @@ class MainWindow(QMainWindow):
 
     def on_value_changed_threshold(self, val):
         self.control_panel.group_box_threshold.setTitle(f"Threshold {val}")
-        self.threshold = val
+        self._threshold = val
         self._load_preview()
+        self._save_current()
 
     def on_value_changed_block_size(self, val):
         val = int_to_block_size(val)
         self.control_panel.group_box_block_size.setTitle(f"Block Size {val}x{val}")
-        self.block_size = val
+        self._block_size = val
         self._load_preview()
+        self._save_current()
 
     def on_value_changed_c(self, val):
         self.control_panel.group_box_c.setTitle(f"C {val}")
-        self.C = val
+        self._C = val
         self._load_preview()
+        self._save_current()
 
     def on_radio_button_toggled_manual(self, selected):
         # Manual threshold
         if selected:
-            self.control_panel.group_box_threshold.show()
-            self.control_panel.group_box_block_size.hide()
-            self.control_panel.group_box_c.hide()
-            self.adaptive_thresh = False
-            self.auto_thresh = False
+            self.control_panel.group_box_threshold.setVisible(True)
+            self.control_panel.group_box_block_size.setVisible(False)
+            self.control_panel.group_box_c.setVisible(False)
+            self._adaptive_thresh = False
+            self._auto_thresh = False
             self._load_preview()
+            self._save_current()
 
     def on_radio_button_toggled_auto(self, selected):
         # Auto threshold (Otsu's method)
         if selected:
-            self.control_panel.group_box_threshold.hide()
-            self.control_panel.group_box_block_size.hide()
-            self.control_panel.group_box_c.hide()
-            self.adaptive_thresh = False
-            self.auto_thresh = True
+            self.control_panel.group_box_threshold.setVisible(False)
+            self.control_panel.group_box_block_size.setVisible(False)
+            self.control_panel.group_box_c.setVisible(False)
+            self._adaptive_thresh = False
+            self._auto_thresh = True
             self._load_preview()
+            self._save_current()
 
-    def on_radio_button_toggled_adap(self, selected):
+    def on_radio_button_toggled_adap(self):
         # Adaptive threshold
-        if selected:
-            self.control_panel.group_box_threshold.hide()
-            self.control_panel.group_box_block_size.show()
-            self.control_panel.group_box_c.show()
-            self.adaptive_thresh = True
-            self.auto_thresh = False
-            self._load_preview()
+        self.control_panel.group_box_threshold.setVisible(False)
+        self.control_panel.group_box_block_size.setVisible(True)
+        self.control_panel.group_box_c.setVisible(True)
+        self._adaptive_thresh = True
+        self._auto_thresh = False
+        self._load_preview()
+        self._save_current()
 
-    def on_clicked_ok(self):
-        import pprint
-        pprint.pprint(self.roi_widget.get_result())
+    def on_radio_button_toggled_adap_mean(self, selected):
+        if selected:
+            self._adaptive_method = cv2.ADAPTIVE_THRESH_MEAN_C
+            self.on_radio_button_toggled_adap()
+
+    def on_radio_button_toggled_adap_gaussian(self, selected):
+        if selected:
+            self._adaptive_method = cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+            self.on_radio_button_toggled_adap()
+
+    def on_clicked_end(self):
+        print("[GUI] end_selection")
+        pprint(self.get_result())
+        # TODO
 
     def on_clicked_add(self):
         name, ret = QInputDialog.getText(self, "New ROI", "Enter a name")
@@ -474,12 +574,14 @@ class MainWindow(QMainWindow):
             if name:
                 success = self.roi_widget.add(name)
                 if success:
+                    self._new_current()
                     pixmap = QPixmap(16, 16)
                     pixmap.fill(QColor().fromRgb(*self.roi_widget.get_rgb(name)))
                     icon = QIcon(pixmap)
                     list_item = QListWidgetItem(icon, name)
                     self.roi_panel.roi_selector.addItem(list_item)
                     self.roi_panel.roi_selector.setCurrentItem(list_item)
+                    self.control_panel.enable_controls(True)
                 else:
                     error_dialog = QErrorMessage(self)
                     error_dialog.setWindowTitle("Error")
@@ -490,6 +592,7 @@ class MainWindow(QMainWindow):
                 error_dialog.showMessage("Invalid name")
 
     def on_clicked_remove(self):
+        self._remove_current()
         cur_item = self.roi_panel.roi_selector.currentItem()
         if cur_item:
             name = cur_item.text()
@@ -497,16 +600,52 @@ class MainWindow(QMainWindow):
             success = self.roi_widget.remove(name)
             if success:
                 self.roi_panel.roi_selector.takeItem(row)
+                if self.roi_panel.roi_selector.currentItem() is None:
+                    # Last item
+                    self.control_panel.enable_controls(False)
 
     def on_item_selection_changed(self):
         cur_item = self.roi_panel.roi_selector.currentItem()
         if cur_item:
             name = cur_item.text()
             success = self.roi_widget.switch_to(name)
+            if success:
+                self._load_current()
+
+    def get_result(self):
+        ret_roi = self.roi_widget.get_result()
+        ret_param = self._result_dict
+        assert ret_roi.keys() == ret_param.keys()
+        combined = dict()
+        for key in ret_roi.keys():
+            combined[key] = {**ret_roi[key], **ret_param[key]}
+            # Remove unnecessary entry
+            del combined[key]["rgb"]
+            if combined[key]["adaptive_thresh"]:
+                del combined[key]["threshold"]
+            elif combined[key]["auto_thresh"]:
+                del combined[key]["adaptive_method"]
+                del combined[key]["threshold"]
+                del combined[key]["block_size"]
+                del combined[key]["C"]
+            else:
+                del combined[key]["adaptive_method"]
+                del combined[key]["block_size"]
+                del combined[key]["C"]
+        return combined
 
 
-video_path = "/home/jeffshee/Developers/#Research/cell-rotation/dataset/new/stimuli02.avi"
-window = MainWindow(video_path)
-window.show()
+def get_video_path():
+    video_path = QFileDialog.getOpenFileName(caption="Open file", filter="Videos (*.mp4 *.avi)")[0]
+    return video_path
 
-app.exec()
+
+# video_path = "/home/jeffshee/Developers/#Research/cell-rotation/dataset/new/stimuli02.avi"
+# video_path = "C:\\Users\\jeffs\\Developers\\cell-rotation\\dataset\\control01.avi"
+app = QApplication(sys.argv)
+video_path = get_video_path()
+if video_path:
+    print(f"[Video] {video_path}")
+    window = MainWindow(video_path)
+    window.show()
+    app.exec()
