@@ -1,9 +1,8 @@
-import os
 import sys
-from typing import Tuple
 from pprint import pprint
 
-import cv2
+from utils_v2 import *
+
 # OpenCV2+PyQt5 issue workaround for Linux
 # https://forum.qt.io/topic/119109/using-pyqt5-with-opencv-python-cv2-causes-error-could-not-load-qt-platform-plugin-xcb-even-though-it-was-found/21
 from cv2.version import ci_build, headless
@@ -18,22 +17,7 @@ from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
     QErrorMessage, QHBoxLayout, QRadioButton, QGroupBox, QListWidgetItem, \
-    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QSizePolicy, QFileDialog
-
-# Settings
-APPLY_GAUSSIAN_BLUR = False  # Apply gaussian blur as preprocessing (Remove high-frequency noise)
-GAUSSIAN_BLUR_KSIZE = 5  # Kernel size of gaussian blur
-GAUSSIAN_BLUR_SIGMA = 0  # Sigma param of gaussian blur
-PREVIEW_SCALE = 4  # Scale factor of previews
-THRESH_TYPE = cv2.THRESH_BINARY_INV  # Base thresh type for the task
-
-# Defaults
-DEFAULT_ADAPTIVE_THRESH = False
-DEFAULT_AUTO_THRESH = True
-DEFAULT_ADAPTIVE_METHOD = cv2.ADAPTIVE_THRESH_MEAN_C
-DEFAULT_THRESHOLD = 180  # cv2.threshold
-DEFAULT_BLOCK_SIZE = 7  # cv2.adaptiveThreshold
-DEFAULT_C = 15  # cv2.adaptiveThreshold
+    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog
 
 
 class RoiWidget(QLabel):
@@ -163,22 +147,6 @@ def cv2_to_qpixmap(img: np.ndarray):
     return qpixmap
 
 
-def get_frame_position(video_capture: cv2.VideoCapture) -> int:
-    return int(video_capture.get(cv2.CAP_PROP_POS_FRAMES)) + 1
-
-
-def set_frame_position(video_capture: cv2.VideoCapture, position: int) -> int:
-    return int(video_capture.set(cv2.CAP_PROP_POS_FRAMES, position - 1))
-
-
-def get_video_dimension(video_capture: cv2.VideoCapture) -> Tuple[int, int]:
-    return int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-
-def get_video_length(video_capture: cv2.VideoCapture) -> int:
-    return int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
-
-
 class ControlPanel(QVBoxLayout):
     def __init__(self):
         super().__init__()
@@ -272,6 +240,7 @@ class MainWindow(QMainWindow):
     def __init__(self, video_path: str):
         super().__init__()
         self.setWindowTitle(f"ROIs selector \"{os.path.realpath(video_path)}\"")
+        self.video_path = video_path
         self._video_capture = cv2.VideoCapture(video_path)
         self._video_length = get_video_length(self._video_capture)
         self._frame = None
@@ -564,9 +533,13 @@ class MainWindow(QMainWindow):
             self.on_radio_button_toggled_adap()
 
     def on_clicked_end(self):
+        gui_result = self.get_result()
         print("[GUI] end_selection")
-        pprint(self.get_result())
-        # TODO
+        pprint(gui_result)
+        output_dir = os.path.realpath("output")
+        os.makedirs(output_dir, exist_ok=True)
+        cell_crop_video(self.video_path, output_dir, gui_result)
+        # TODO Calculation
 
     def on_clicked_add(self):
         name, ret = QInputDialog.getText(self, "New ROI", "Enter a name")
@@ -619,6 +592,9 @@ class MainWindow(QMainWindow):
         combined = dict()
         for key in ret_roi.keys():
             combined[key] = {**ret_roi[key], **ret_param[key]}
+            # Convert ROI to tuple
+            roi = combined[key]["roi"]
+            combined[key]["roi"] = roi.x(), roi.y(), roi.width(), roi.height()
             # Remove unnecessary entry
             del combined[key]["rgb"]
             if combined[key]["adaptive_thresh"]:
