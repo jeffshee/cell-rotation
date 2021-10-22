@@ -89,4 +89,4 @@ def gui(video_path: str, cached_roi=None):
 
 
 if __name__ == "__main__":
-    gui("res/rotate-qr-320.avi")
+    gui("../res/rotate-qr-320.avi")

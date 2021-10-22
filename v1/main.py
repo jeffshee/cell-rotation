@@ -197,7 +197,7 @@ if __name__ == "__main__":
     dataset_root = "dataset"
     output_root = "output"
     file_list = [os.path.join(dataset_root, f) for f in os.listdir(dataset_root)]
-    roi_cache_path = "roi.pkl"
+    roi_cache_path = "../roi.pkl"
     post_processing = []
 
     if os.path.isfile(roi_cache_path) and not IGNORE_CACHED_ROI:

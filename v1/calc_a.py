@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # dummy_path = "res/rotate-qr-320.avi"
     # plot_s_against_delta(dummy_path, "res/rotate-qr-320-fig0.png")
 
-    files = filter(lambda x: str(x).endswith("crop.avi"), os.listdir("output/#old"))
+    files = filter(lambda x: str(x).endswith("crop.avi"), os.listdir("../output/#old"))
     for f in files:
         plot_pairwise_similarity_heatmap_compact(f"output/#old/{f}",
                                                  f"output/{filename_append(f, 'pairwise-compact', 'png')}")

@@ -80,11 +80,15 @@ def get_video_writer(output_path: str, framerate: float, dimension: Tuple[int, i
     # RGBA
     # fourcc = cv2.VideoWriter_fourcc(*"RGBA")  # Working (kind of)
     # PNG
-    fourcc = cv2.VideoWriter_fourcc(*"png ")  # Working (best compatibility)
+    # fourcc = cv2.VideoWriter_fourcc(*"png ")  # Working (best compatibility) (Doesn't work on Windows!) (x)
     # Uncompressed RGB
-    # fourcc = cv2.VideoWriter_fourcc(*"raw ") # Didn't encode
+    # fourcc = cv2.VideoWriter_fourcc(*"raw ") # Didn't encode(x)
     # Uncompressed YUV422
-    # fourcc = cv2.VideoWriter_fourcc(*"yuv2")  # Encoded but didn't play
+    # fourcc = cv2.VideoWriter_fourcc(*"yuv2")  # Encoded but didn't play(x)
+    #
+    # fourcc = cv2.VideoWriter_fourcc(*"XVID") # Very lossy(x)
+    fourcc = cv2.VideoWriter_fourcc(*"IYUV")  # Working on Windows
+    # fourcc = -1
     return cv2.VideoWriter(output_path, fourcc, framerate, dimension)
 
 
