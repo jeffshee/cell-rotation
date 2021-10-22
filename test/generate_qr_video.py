@@ -3,7 +3,7 @@ import math
 from scipy import ndimage
 from tqdm import tqdm
 
-from utils import *
+from v1.utils import *
 
 
 def generate(output_path: str):
