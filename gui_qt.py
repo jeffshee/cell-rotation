@@ -1,11 +1,14 @@
+import os
 import sys
+import threading
 from pprint import pprint
-
-from utils_v2 import *
 
 # OpenCV2+PyQt5 issue workaround for Linux
 # https://forum.qt.io/topic/119109/using-pyqt5-with-opencv-python-cv2-causes-error-could-not-load-qt-platform-plugin-xcb-even-though-it-was-found/21
 from cv2.version import ci_build, headless
+
+from calc_v2 import main
+from utils_v2 import *
 
 ci_and_not_headless = ci_build and not headless
 if sys.platform.startswith("linux") and ci_and_not_headless:
@@ -536,10 +539,14 @@ class MainWindow(QMainWindow):
         gui_result = self.get_result()
         print("[GUI] end_selection")
         pprint(gui_result)
-        output_dir = os.path.realpath("output")
+        output_dir = "output"
         os.makedirs(output_dir, exist_ok=True)
-        cell_crop_video(self.video_path, output_dir, gui_result)
-        # TODO Calculation
+
+        thread = threading.Thread(target=main,
+                                  kwargs=dict(video_path=self.video_path,
+                                              output_dir=output_dir,
+                                              gui_result=gui_result))
+        thread.start()
 
     def on_clicked_add(self):
         name, ret = QInputDialog.getText(self, "New ROI", "Enter a name")

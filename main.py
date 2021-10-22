@@ -2,7 +2,7 @@ from multiprocessing import Process
 
 from calc_a import *
 from calc_b import *
-from gui import GUI
+from gui import gui
 
 # NOTE: Method B is not usable for cell video yet.
 METHOD = "a"
@@ -10,7 +10,7 @@ METHOD = "a"
 IGNORE_CACHED_ROI = False
 
 
-def binarization_video(video_path: str, output_path: str, threshold=127, auto_thresh=False):
+def binarization_video(video_path: str, output_path: str, threshold=127):
     # Input/Output
     video_capture = get_video_capture(video_path)
     video_length = get_video_length(video_path)
@@ -28,25 +28,26 @@ def binarization_video(video_path: str, output_path: str, threshold=127, auto_th
         ret, frame = video_capture.read()
         if not ret:
             break
-        mode = cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU if auto_thresh else cv2.THRESH_BINARY_INV
-        if auto_thresh:
-            threshold = 0
-        frame = binarization_img(frame, threshold, mode=mode)
+        frame = binarization_img(frame, threshold, mode=cv2.THRESH_BINARY_INV)
         video_writer.write(bgr_img(frame))  # Convert back to bgr format before writing frame
 
     video_capture.release()
     video_writer.release()
 
 
-def cell_detect_video(video_path: str, output_path: str, gui_ret, thresh_type=cv2.THRESH_BINARY_INV,
-                      adaptive_method=cv2.ADAPTIVE_THRESH_MEAN_C, auto_thresh=False, adaptive_thresh=True):
+def cell_detect_video(video_path: str, output_path: str, threshold=127, roi=None):
     # Input/Output
     video_capture = get_video_capture(video_path)
     video_length = get_video_length(video_path)
     video_dimension = get_video_dimension(video_path)
     video_framerate = get_video_framerate(video_path)
     video_writer = get_video_writer(output_path, video_framerate, video_dimension)
-    # width, height = video_dimension
+    width, height = video_dimension
+
+    if roi is None:
+        roi_ratio = (0.33, 0.33, 0.66, 0.66)  # Ratio on width and height. x1,y1,x2,y2.
+        roi = (int(roi_ratio[0] * width), int(roi_ratio[1] * height)),
+        (int(roi_ratio[2] * width), int(roi_ratio[3] * height))
 
     bar = tqdm(total=video_length, desc=f"Cell Detect {video_path}")
     set_frame_position(video_capture, 0)
@@ -58,24 +59,11 @@ def cell_detect_video(video_path: str, output_path: str, gui_ret, thresh_type=cv
         ret, frame = video_capture.read()
         if not ret:
             break
-        # Crop according ROI
-        frame = crop_img_roi(frame, gui_ret["roi"])
-        frame_gray = grayscale_img(frame)
-        # Apply GaussianBlur to eliminate noises
-        frame_gray_blur = cv2.GaussianBlur(frame_gray, (5, 5), 0)
-
-        if adaptive_thresh:
-            frame_bin = cv2.adaptiveThreshold(frame_gray_blur, 255, adaptive_method, thresh_type,
-                                              gui_ret["block_size"], gui_ret["c"])
-        elif auto_thresh:
-            threshold, frame_bin = cv2.threshold(frame_gray_blur, 0, 255, thresh_type | cv2.THRESH_OTSU)
-        else:
-            _, frame_bin = cv2.threshold(frame_gray_blur, gui_ret["threshold"], 255, thresh_type)
-
         frame_copy = frame.copy()
+        frame = binarization_img(frame, threshold, cv2.THRESH_BINARY_INV)
+        frame = apply_mask_img(frame, draw_mask_roi(roi, width, height))
 
-        # frame = apply_mask_img(frame, draw_mask_roi(gui_ret["roi"], width, height))
-        contours, hierarchy = cv2.findContours(frame_bin, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(frame, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
 
         # Find the convex hull object for each contour
         # hull_list = []
@@ -100,24 +88,26 @@ def cell_detect_video(video_path: str, output_path: str, gui_ret, thresh_type=cv
         #                               thickness=-1)
         frame_copy = cv2.drawContours(frame_copy, contours=hull_list, contourIdx=-1, color=(0, 0, 255),
                                       thickness=-1)
-        # frame_copy = cv2.rectangle(frame_copy, roi[:2], roi[2:], color=(255, 0, 0), thickness=1, lineType=cv2.LINE_AA)
-        # # Draw label on box
-        # frame_copy = draw_label(frame_copy, roi[:2], "ROI")
+        frame_copy = cv2.rectangle(frame_copy, roi[:2], roi[2:], color=(255, 0, 0), thickness=1, lineType=cv2.LINE_AA)
+        # Draw label on box
+        frame_copy = draw_label(frame_copy, roi[:2], "ROI")
         video_writer.write(frame_copy)
 
     video_capture.release()
     video_writer.release()
 
 
-def cell_crop_video(video_path: str, output_path: str, gui_ret, thresh_type=cv2.THRESH_BINARY_INV,
-                    adaptive_method=cv2.ADAPTIVE_THRESH_MEAN_C, auto_thresh=False, adaptive_thresh=True):
+def cell_crop_video(video_path: str, output_path: str, threshold=127, roi=None):
     # Input/Output
     video_capture = get_video_capture(video_path)
     video_length = get_video_length(video_path)
-    # width, height = get_video_dimension(video_path)
-    x1, y1, x2, y2 = gui_ret["roi"]
-    width, height = x2 - x1, y2 - y1
+    width, height = get_video_dimension(video_path)
     video_framerate = get_video_framerate(video_path)
+
+    if roi is None:
+        roi_ratio = (0.33, 0.33, 0.66, 0.66)  # Ratio on width and height. x1,y1,x2,y2.
+        roi = (int(roi_ratio[0] * width), int(roi_ratio[1] * height)),
+        (int(roi_ratio[2] * width), int(roi_ratio[3] * height))
 
     bar = tqdm(total=video_length, desc=f"Cell Detect {video_path}")
     set_frame_position(video_capture, 0)
@@ -132,25 +122,11 @@ def cell_crop_video(video_path: str, output_path: str, gui_ret, thresh_type=cv2.
         ret, frame = video_capture.read()
         if not ret:
             break
-        # Crop according ROI
-        frame = crop_img_roi(frame, gui_ret["roi"])
-        frame_gray = grayscale_img(frame)
-        # Apply GaussianBlur to eliminate noises
-        frame_gray_blur = cv2.GaussianBlur(frame_gray, (5, 5), 0)
-
-        if adaptive_thresh:
-            frame_bin = cv2.adaptiveThreshold(frame_gray_blur, 255, adaptive_method, thresh_type,
-                                              gui_ret["block_size"], gui_ret["c"])
-        elif auto_thresh:
-            threshold, frame_bin = cv2.threshold(frame_gray_blur, 0, 255, thresh_type | cv2.THRESH_OTSU)
-        else:
-            _, frame_bin = cv2.threshold(frame_gray_blur, gui_ret["threshold"], 255, thresh_type)
-
         frame_copy = frame.copy()
+        frame = binarization_img(frame, threshold, cv2.THRESH_BINARY_INV)
+        frame = apply_mask_img(frame, draw_mask_roi(roi, width, height))
 
-        # frame = apply_mask_img(frame, draw_mask_roi(roi, width, height))
-
-        contours, hierarchy = cv2.findContours(frame_bin, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(frame, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
 
         # Filter out the contours that unlikely to be a circle
         contours = [contours_i for contours_i in contours if len(contours_i) > 4]
@@ -186,7 +162,7 @@ def cell_crop_video(video_path: str, output_path: str, gui_ret, thresh_type=cv2.
     return output_frames
 
 
-def cell_template_image(video_path: str, threshold=127, auto_threshold=True, roi=None, ret_binarization=False):
+def cell_template_image(video_path: str, threshold=127, roi=None, ret_binarization=False):
     # Input
     video_capture = get_video_capture(video_path)
     width, height = get_video_dimension(video_path)
@@ -199,16 +175,13 @@ def cell_template_image(video_path: str, threshold=127, auto_threshold=True, roi
     set_frame_position(video_capture, 0)
     ret, frame = video_capture.read()
     frame_copy = frame.copy()
-    mode = cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU if auto_threshold else cv2.THRESH_BINARY_INV
-    if auto_threshold:
-        threshold = 0
-    frame = binarization_img(frame, threshold, mode)
+    frame = binarization_img(frame, threshold, cv2.THRESH_BINARY_INV)
     frame = apply_mask_img(frame, draw_mask_roi(roi, width, height))
 
     contours, hierarchy = cv2.findContours(frame, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
 
     # Filter out the contours that unlikely to be a circle
-    # contours = [contours_i for contours_i in contours if len(contours_i) > 4]
+    contours = [contours_i for contours_i in contours if len(contours_i) > 4]
     # Get all points from contours
     ptr_list = np.concatenate(contours)
     # Find the convex hull object for all points in contours
@@ -224,7 +197,6 @@ if __name__ == "__main__":
     dataset_root = "dataset"
     output_root = "output"
     file_list = [os.path.join(dataset_root, f) for f in os.listdir(dataset_root)]
-    file_list = list(filter(lambda file_path: os.path.isfile(file_path), file_list))
     roi_cache_path = "roi.pkl"
     post_processing = []
 
@@ -256,16 +228,15 @@ if __name__ == "__main__":
             output_path_final = os.path.join(output_root, filename_append(f_basename, "output"))
 
         output_path_fig = filename_append(output_path_final, "fig", "png")
-        gui = GUI(video_path=f, roi=roi_cache.get(f, None))
-        ret = gui.get_result()
+        roi, threshold = gui(f, cached_roi=roi_cache.get(f, None))
         with open(roi_cache_path, "wb") as pkl:
-            roi_cache[f] = ret["roi"]
+            roi_cache[f] = roi
             pickle.dump(roi_cache, pkl)
         # cell_detect_video(f, output_path=output_path, threshold=threshold, roi=roi)
 
         if METHOD == "a":
             # Method A
-            frame_list = cell_crop_video(f, output_path=output_path_final, gui_ret=ret)
+            frame_list = cell_crop_video(f, output_path=output_path_final, threshold=threshold, roi=roi)
             post_processing.append(Process(target=plot_pairwise_similarity_heatmap_compact,
                                            kwargs=dict(video_path=output_path_final,
                                                        frame_list=frame_list,
@@ -278,12 +249,11 @@ if __name__ == "__main__":
             # plot_s_against_delta(video_path=output_path_final, output_path=filename_append(output_path_fig, "a"))
         elif METHOD == "b":
             # Method B
-            pass
-            # img_template = cell_template_image(f, threshold=threshold, roi=roi)
-            # method_b = MethodB(img_template, video_path=f, output_path=output_path_final)
-            # ts, thetas = method_b.calc()
-            # plot_theta_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b1"))
-            # plot_angular_speed_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b2"))
+            img_template = cell_template_image(f, threshold=threshold, roi=roi)
+            method_b = MethodB(img_template, video_path=f, output_path=output_path_final)
+            ts, thetas = method_b.calc()
+            plot_theta_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b1"))
+            plot_angular_speed_against_t(ts, thetas, output_path=filename_append(output_path_fig, "b2"))
 
             # Method B (+binarization)
             # img_template = cell_template_image(f, threshold=threshold, roi=roi, ret_binarization=True)
