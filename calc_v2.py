@@ -12,7 +12,7 @@ def similarity(img1: np.ndarray, img2: np.ndarray):
     return np.squeeze(cv2.matchTemplate(img1, img2, TM_METHOD))
 
 
-def calc_pairwise_similarity(crop_video_path: str, frame_list: list = None, name=None):
+def calc_pairwise_similarity(crop_video_path: str, frame_list: list = None, name=""):
     video_capture = cv2.VideoCapture(crop_video_path)
     if not frame_list:
         while video_capture.isOpened():

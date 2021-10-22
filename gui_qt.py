@@ -2,6 +2,7 @@ import os
 import sys
 import threading
 from pprint import pprint
+from multiprocessing import freeze_support
 
 # OpenCV2+PyQt5 issue workaround for Linux
 # https://forum.qt.io/topic/119109/using-pyqt5-with-opencv-python-cv2-causes-error-could-not-load-qt-platform-plugin-xcb-even-though-it-was-found/21
@@ -20,7 +21,7 @@ from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
     QErrorMessage, QHBoxLayout, QRadioButton, QGroupBox, QListWidgetItem, \
-    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog
+    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog, QMessageBox
 
 
 class RoiWidget(QLabel):
@@ -537,16 +538,18 @@ class MainWindow(QMainWindow):
 
     def on_clicked_end(self):
         gui_result = self.get_result()
-        print("[GUI] end_selection")
-        pprint(gui_result)
-        output_dir = "output"
-        os.makedirs(output_dir, exist_ok=True)
+        if gui_result:
+            print("[GUI] end_selection")
+            pprint(gui_result)
+            output_dir = "output"
+            os.makedirs(output_dir, exist_ok=True)
 
-        thread = threading.Thread(target=main,
-                                  kwargs=dict(video_path=self.video_path,
-                                              output_dir=output_dir,
-                                              gui_result=gui_result))
-        thread.start()
+            thread = threading.Thread(target=main,
+                                      kwargs=dict(video_path=self.video_path,
+                                                  output_dir=output_dir,
+                                                  gui_result=gui_result))
+            thread.start()
+            QMessageBox.information(self, "Processing", "Check console for output")
 
     def on_clicked_add(self):
         name, ret = QInputDialog.getText(self, "New ROI", "Enter a name")
@@ -619,16 +622,16 @@ class MainWindow(QMainWindow):
 
 
 def get_video_path():
-    video_path = QFileDialog.getOpenFileName(caption="Open file", filter="Videos (*.mp4 *.avi)")[0]
+    video_path = QFileDialog.getOpenFileName(caption="Open Video", filter="Videos (*.mp4 *.avi)")[0]
     return video_path
 
 
-# video_path = "/home/jeffshee/Developers/#Research/cell-rotation/dataset/new/stimuli02.avi"
-# video_path = "C:\\Users\\jeffs\\Developers\\cell-rotation\\dataset\\control01.avi"
-app = QApplication(sys.argv)
-video_path = get_video_path()
-if video_path:
-    print(f"[Video] {video_path}")
-    window = MainWindow(video_path)
-    window.show()
-    app.exec()
+if __name__ == "__main__":
+    freeze_support()
+    app = QApplication(sys.argv)
+    video_path = get_video_path()
+    if video_path:
+        print(f"[Video] {video_path}")
+        window = MainWindow(video_path)
+        window.show()
+        app.exec()
