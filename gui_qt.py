@@ -1,11 +1,12 @@
 import os
 import sys
 import threading
-from pprint import pprint
 from multiprocessing import freeze_support
+from pprint import pprint
 
 # OpenCV2+PyQt5 issue workaround for Linux
 # https://forum.qt.io/topic/119109/using-pyqt5-with-opencv-python-cv2-causes-error-could-not-load-qt-platform-plugin-xcb-even-though-it-was-found/21
+from PyQt5 import QtGui
 from cv2.version import ci_build, headless
 
 from calc_v2 import main
@@ -17,11 +18,19 @@ if sys.platform.startswith("linux") and ci_and_not_headless:
     os.environ.pop("QT_QPA_FONTDIR")
 
 import numpy as np
-from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon
+import matplotlib.pyplot as plt
+from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal, QSize
+from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon, QKeySequence
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
-    QErrorMessage, QHBoxLayout, QRadioButton, QGroupBox, QListWidgetItem, \
-    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog, QMessageBox
+    QHBoxLayout, QRadioButton, QGroupBox, QListWidgetItem, \
+    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog, QMessageBox, QAction
+
+
+# # Zoom in/out with scrollbar adjustment
+# # Reference:
+# # https://docs.huihoo.com/qt/4.5/widgets-imageviewer.html
+# def adjust_scrollbar(scrollbar: QScrollBar, factor):
+#     scrollbar.setValue(int(factor * scrollbar.value() + (factor - 1) * scrollbar.pageStep() / 2))
 
 
 class RoiWidget(QLabel):
@@ -35,7 +44,6 @@ class RoiWidget(QLabel):
         self._cur_key = None
 
         # Using ColorMap from matplotlib
-        import matplotlib.pyplot as plt
         self._cm = plt.cm.get_cmap("tab10")
         self._cm_count = 0
 
@@ -113,31 +121,41 @@ class RoiWidget(QLabel):
     def paintEvent(self, event):
         super().paintEvent(event)
         if self._roi_dict:
+            # Get current scaling
+            scale = self.width() / self.pixmap().width()
             # Draw all ROIs
             painter = QPainter(self)
             for name, item in self._roi_dict.items():
                 rgb, roi = item["rgb"], item["roi"]
                 brush = QBrush(QColor(*rgb, 100))
                 painter.setBrush(brush)
-                painter.drawRect(roi)
-                painter.drawText(roi.topLeft(), name)
+                roi_scaled = QRect(int(roi.x() * scale), int(roi.y() * scale),
+                                   int(roi.width() * scale), int(roi.height() * scale))
+                painter.drawRect(roi_scaled)
+                painter.drawText(roi_scaled.topLeft(), name)
 
     def mousePressEvent(self, event):
         if self._roi_dict:
-            self._begin = event.pos()
-            self._end = event.pos()
+            # Get current scaling
+            scale = self.width() / self.pixmap().width()
+            self._begin = event.pos() / scale
+            self._end = event.pos() / scale
             self.update_roi()
             self.update()
 
     def mouseMoveEvent(self, event):
         if self._roi_dict:
-            self._end = event.pos()
+            # Get current scaling
+            scale = self.width() / self.pixmap().width()
+            self._end = event.pos() / scale
             self.update_roi()
             self.update()
 
     def mouseReleaseEvent(self, event):
         if self._roi_dict:
-            self._end = event.pos()
+            # Get current scaling
+            scale = self.width() / self.pixmap().width()
+            self._end = event.pos() / scale
             self.update_roi()
             self.update()
 
@@ -149,6 +167,46 @@ def cv2_to_qpixmap(img: np.ndarray):
     qimage = QImage(img.data, width, height, bytes_per_line, QImage.Format_RGB888)
     qpixmap = QPixmap.fromImage(qimage)
     return qpixmap
+
+
+class ZoomScrollArea(QScrollArea):
+    def __init__(self, scale_min=1.0, scale_max=4.0, step=0.1):
+        super().__init__()
+        self.scale_factor_min = scale_min
+        self.scale_factor_max = scale_max
+        self.scale_factor_step = step
+        self._scale_factor = 1.0
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        if event.modifiers() == Qt.ControlModifier:
+            prev_scale_factor = self._scale_factor
+            if event.angleDelta().y() > 0:
+                self._scale_factor += self.scale_factor_step
+            else:
+                self._scale_factor -= self.scale_factor_step
+            self._scale_factor = max(min(self._scale_factor, self.scale_factor_max), self.scale_factor_min)
+            print("[Zoom] {:.1f}".format(self._scale_factor))
+            cur_size = self.widget().size()
+            original_size = cur_size / prev_scale_factor
+            new_size = original_size * self._scale_factor
+            """
+            Reference: https://stackoverflow.com/questions/3725342/zooming-in-out-on-a-mouser-point/32269574
+            QPointF ScrollbarPos = QPointF(horizontalScrollBar()->value(), verticalScrollBar()->value());
+            QPointF DeltaToPos = e->posF() / OldScale - widget()->pos() / OldScale;
+            QPointF Delta = DeltaToPos * NewScale - DeltaToPos * OldScale;
+            """
+            scrollbar_pos = QPoint(self.horizontalScrollBar().value(), self.verticalScrollBar().value())
+            delta_to_pos = event.pos() / prev_scale_factor - self.widget().pos() / prev_scale_factor
+            delta = delta_to_pos * self._scale_factor - delta_to_pos * prev_scale_factor
+            self.widget().resize(new_size)
+            # Adjust Scrollbar
+            self.horizontalScrollBar().setValue(scrollbar_pos.x() + delta.x())
+            self.verticalScrollBar().setValue(scrollbar_pos.y() + delta.y())
+        else:
+            super().wheelEvent(event)
+
+    def get_scale_factor(self):
+        return self._scale_factor
 
 
 class ControlPanel(QVBoxLayout):
@@ -219,9 +277,9 @@ class RoiPanel(QVBoxLayout):
 
         # Buttons
         hbox_button = QHBoxLayout()
-        self.button_add = QPushButton("New ROI")
+        self.button_add = QPushButton("Add ROI <Ctrl+A>")
         hbox_button.addWidget(self.button_add)
-        self.button_remove = QPushButton("Remove ROI")
+        self.button_remove = QPushButton("Remove ROI <Ctrl+R>")
         hbox_button.addWidget(self.button_remove)
 
         vbox = QVBoxLayout()
@@ -258,17 +316,20 @@ class MainWindow(QMainWindow):
         self._C = DEFAULT_C  # cv2.adaptiveThreshold
 
         self._result_dict = dict()
+        self.src_scale_factor = 1.0
 
         self.layout = QVBoxLayout()
 
         hbox_display = QHBoxLayout()
         # Source image
         self.roi_widget = RoiWidget()
-        scroll_area = QScrollArea()
-        scroll_area.setWidget(self.roi_widget)
-        group_box_src = QGroupBox("Source image")
+        self.roi_widget.setScaledContents(True)
+        # self.src_scroll_area = QScrollArea()
+        self.src_scroll_area = ZoomScrollArea()
+        self.src_scroll_area.setWidget(self.roi_widget)
+        group_box_src = QGroupBox("Source Image <Ctrl+Scroll to zoom-in/out>")
         hbox = QHBoxLayout()
-        hbox.addWidget(scroll_area)
+        hbox.addWidget(self.src_scroll_area)
         group_box_src.setLayout(hbox)
         hbox_display.addWidget(group_box_src, stretch=5)
 
@@ -311,6 +372,17 @@ class MainWindow(QMainWindow):
         # End selection button
         self.button_ok = QPushButton("End selection")
         self.layout.addWidget(self.button_ok)
+
+        # Shortcuts
+        action = QAction("Add ROI", self)
+        action.triggered.connect(self.on_clicked_add)
+        action.setShortcut(QKeySequence("Ctrl+A"))
+        self.addAction(action)
+
+        action = QAction("Remove ROI", self)
+        action.triggered.connect(self.on_clicked_remove)
+        action.setShortcut(QKeySequence("Ctrl+R"))
+        self.addAction(action)
 
         # Callbacks
         self.roi_widget.RoiChanged.connect(self.on_roi_changed)
@@ -415,7 +487,8 @@ class MainWindow(QMainWindow):
             self._frame = frame
             h, w, c = frame.shape
             self.roi_widget.setPixmap(cv2_to_qpixmap(frame))
-            self.roi_widget.resize(w, h)
+            new_size = QSize(w, h) * self.src_scroll_area.get_scale_factor()
+            self.roi_widget.resize(new_size)
         else:
             self.roi_widget.clear()
         self._load_preview()
@@ -467,6 +540,23 @@ class MainWindow(QMainWindow):
                                                   thickness=-1)
                 self.cell_display.setPixmap(cv2_to_qpixmap(frame_contours))
                 self.cell_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
+
+    # def _scale_image(self, factor):
+    #     if self._frame is not None:
+    #         height, width, channel = self._frame.shape
+    #         self.roi_widget.resize(int(factor * width), int(factor * height))
+    #         adjust_scrollbar(self.src_scroll_area.horizontalScrollBar(), factor)
+    #         adjust_scrollbar(self.src_scroll_area.verticalScrollBar(), factor)
+
+    # def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+    #     if event.modifiers() == Qt.ControlModifier:
+    #         if event.angleDelta().y() > 0:
+    #             self.src_scale_factor += 0.1
+    #         else:
+    #             self.src_scale_factor -= 0.1
+    #         self.src_scale_factor = max(min(self.src_scale_factor, 8.0), 1.0)
+    #         print(self.src_scale_factor)
+    #         self._scale_image(self.src_scale_factor)
 
     def on_roi_changed(self):
         self._load_preview()
@@ -543,16 +633,21 @@ class MainWindow(QMainWindow):
             pprint(gui_result)
             output_dir = "output"
             os.makedirs(output_dir, exist_ok=True)
-
+            index = len(
+                list(filter(lambda p: p.startswith("params") and p.endswith(".txt"), os.listdir(output_dir))))
+            with open(os.path.join(output_dir, "params_{:02d}.txt".format(index + 1)), "w") as f:
+                pprint(gui_result, f)
             thread = threading.Thread(target=main,
                                       kwargs=dict(video_path=self.video_path,
                                                   output_dir=output_dir,
                                                   gui_result=gui_result))
             thread.start()
-            QMessageBox.information(self, "Processing", "Check console for output")
+            QMessageBox.information(self, "Processing", "Check console for output.")
+        else:
+            QMessageBox.critical(self, "Error", "Nothing to process!")
 
     def on_clicked_add(self):
-        name, ret = QInputDialog.getText(self, "New ROI", "Enter a name")
+        name, ret = QInputDialog.getText(self, "Add ROI", "Enter a name:")
         if ret:
             if name:
                 success = self.roi_widget.add(name)
@@ -566,13 +661,9 @@ class MainWindow(QMainWindow):
                     self.roi_panel.roi_selector.setCurrentItem(list_item)
                     self.control_panel.enable_controls(True)
                 else:
-                    error_dialog = QErrorMessage(self)
-                    error_dialog.setWindowTitle("Error")
-                    error_dialog.showMessage("Name already exists")
+                    QMessageBox.critical(self, "Error", "Name already exists!")
             else:
-                error_dialog = QErrorMessage(self)
-                error_dialog.setWindowTitle("Error")
-                error_dialog.showMessage("Invalid name")
+                QMessageBox.critical(self, "Error", "Invalid name!")
 
     def on_clicked_remove(self):
         self._remove_current()
