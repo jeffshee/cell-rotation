@@ -6,6 +6,7 @@ from multiprocessing import freeze_support
 
 # OpenCV2+PyQt5 issue workaround for Linux
 # https://forum.qt.io/topic/119109/using-pyqt5-with-opencv-python-cv2-causes-error-could-not-load-qt-platform-plugin-xcb-even-though-it-was-found/21
+from PyQt5 import QtGui
 from cv2.version import ci_build, headless
 
 from calc_v2 import main
@@ -17,11 +18,19 @@ if sys.platform.startswith("linux") and ci_and_not_headless:
     os.environ.pop("QT_QPA_FONTDIR")
 
 import numpy as np
-from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal
+import matplotlib.pyplot as plt
+from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal, QPointF
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
     QErrorMessage, QHBoxLayout, QRadioButton, QGroupBox, QListWidgetItem, \
-    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog, QMessageBox
+    QSlider, QScrollArea, QListWidget, QAbstractItemView, QPushButton, QFileDialog, QMessageBox, QScrollBar
+
+
+# Zoom in/out with scrollbar adjustment
+# Reference:
+# https://docs.huihoo.com/qt/4.5/widgets-imageviewer.html
+def adjust_scrollbar(scrollbar: QScrollBar, factor):
+    scrollbar.setValue(int(factor * scrollbar.value() + (factor - 1) * scrollbar.pageStep() / 2))
 
 
 class RoiWidget(QLabel):
@@ -35,7 +44,6 @@ class RoiWidget(QLabel):
         self._cur_key = None
 
         # Using ColorMap from matplotlib
-        import matplotlib.pyplot as plt
         self._cm = plt.cm.get_cmap("tab10")
         self._cm_count = 0
 
@@ -151,6 +159,47 @@ def cv2_to_qpixmap(img: np.ndarray):
     return qpixmap
 
 
+class ZoomScrollArea(QScrollArea):
+    def __init__(self, scale_min=1.0, scale_max=4.0, step=0.1):
+        super().__init__()
+        self.scale_factor_min = scale_min
+        self.scale_factor_max = scale_max
+        self.scale_factor_step = step
+        self._scale_factor = 1.0
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+        if event.modifiers() == Qt.ControlModifier:
+            prev_scale_factor = self._scale_factor
+            if event.angleDelta().y() > 0:
+                self._scale_factor += self.scale_factor_step
+            else:
+                self._scale_factor -= self.scale_factor_step
+            self._scale_factor = max(min(self._scale_factor, self.scale_factor_max), self.scale_factor_min)
+            print("[Zoom] {:.1f}".format(self._scale_factor))
+            cur_size = self.widget().size()
+            original_size = cur_size / prev_scale_factor
+            new_size = original_size * self._scale_factor
+            # cur_w, cur_h = cur_size.width(), cur_size.height()
+            # original_w, original_h = cur_w // prev_scale_factor, cur_h // prev_scale_factor
+            # new_w, new_h = original_w * self._scale_factor, original_h * self._scale_factor
+            """
+            Reference: https://stackoverflow.com/questions/3725342/zooming-in-out-on-a-mouser-point/32269574
+            QPointF ScrollbarPos = QPointF(horizontalScrollBar()->value(), verticalScrollBar()->value());
+            QPointF DeltaToPos = e->posF() / OldScale - widget()->pos() / OldScale;
+            QPointF Delta = DeltaToPos * NewScale - DeltaToPos * OldScale;
+            """
+            scrollbar_pos = QPointF(self.horizontalScrollBar().value(), self.verticalScrollBar().value())
+            delta_to_pos = event.posF() / prev_scale_factor - self.widget().pos() / prev_scale_factor
+            delta = delta_to_pos * self._scale_factor - delta_to_pos * prev_scale_factor
+            # self.widget().resize(int(new_w), int(new_h))
+            self.widget().resize(new_size)
+            # Adjust Scrollbar
+            self.horizontalScrollBar().setValue(scrollbar_pos.x() + delta.x())
+            self.verticalScrollBar().setValue(scrollbar_pos.y() + delta.y())
+        else:
+            super().wheelEvent(event)
+
+
 class ControlPanel(QVBoxLayout):
     def __init__(self):
         super().__init__()
@@ -258,17 +307,20 @@ class MainWindow(QMainWindow):
         self._C = DEFAULT_C  # cv2.adaptiveThreshold
 
         self._result_dict = dict()
+        self.src_scale_factor = 1.0
 
         self.layout = QVBoxLayout()
 
         hbox_display = QHBoxLayout()
         # Source image
         self.roi_widget = RoiWidget()
-        scroll_area = QScrollArea()
-        scroll_area.setWidget(self.roi_widget)
+        self.roi_widget.setScaledContents(True)
+        # self.src_scroll_area = QScrollArea()
+        self.src_scroll_area = ZoomScrollArea()
+        self.src_scroll_area.setWidget(self.roi_widget)
         group_box_src = QGroupBox("Source image")
         hbox = QHBoxLayout()
-        hbox.addWidget(scroll_area)
+        hbox.addWidget(self.src_scroll_area)
         group_box_src.setLayout(hbox)
         hbox_display.addWidget(group_box_src, stretch=5)
 
@@ -467,6 +519,23 @@ class MainWindow(QMainWindow):
                                                   thickness=-1)
                 self.cell_display.setPixmap(cv2_to_qpixmap(frame_contours))
                 self.cell_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
+
+    def _scale_image(self, factor):
+        if self._frame is not None:
+            height, width, channel = self._frame.shape
+            self.roi_widget.resize(int(factor * width), int(factor * height))
+            adjust_scrollbar(self.src_scroll_area.horizontalScrollBar(), factor)
+            adjust_scrollbar(self.src_scroll_area.verticalScrollBar(), factor)
+
+    # def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
+    #     if event.modifiers() == Qt.ControlModifier:
+    #         if event.angleDelta().y() > 0:
+    #             self.src_scale_factor += 0.1
+    #         else:
+    #             self.src_scale_factor -= 0.1
+    #         self.src_scale_factor = max(min(self.src_scale_factor, 8.0), 1.0)
+    #         print(self.src_scale_factor)
+    #         self._scale_image(self.src_scale_factor)
 
     def on_roi_changed(self):
         self._load_preview()
