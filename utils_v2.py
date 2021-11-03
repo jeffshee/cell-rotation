@@ -1,3 +1,4 @@
+from sys import platform
 from typing import Tuple
 
 import numpy as np
@@ -43,8 +44,12 @@ def get_video_writer(output_path: str, framerate: float, dimension: Tuple[int, i
     # fourcc = cv2.VideoWriter_fourcc(*"yuv2")  # Encoded but didn't play(x)
     #
     # fourcc = cv2.VideoWriter_fourcc(*"XVID") # Very lossy(x)
-    fourcc = cv2.VideoWriter_fourcc(*"IYUV")  # Working on Windows
+    # fourcc = cv2.VideoWriter_fourcc(*"IYUV")  # Working on Windows
     # fourcc = -1
+    if platform == "linux" or platform == "linux2":
+        fourcc = cv2.VideoWriter_fourcc(*"png ")
+    else:
+        fourcc = cv2.VideoWriter_fourcc(*"IYUV")
     return cv2.VideoWriter(output_path, fourcc, framerate, dimension)
 
 
@@ -70,6 +75,14 @@ def draw_mask_contours(contours, width: int, height: int):
     black = np.zeros((height, width, 3), np.uint8)
     # Draw mask from ROI
     black = cv2.drawContours(black, contours, -1, (255, 255, 255), -1)
+    return cv2.cvtColor(black, cv2.COLOR_BGR2GRAY)
+
+
+def draw_mask_radius(cX, cY, radius, width: int, height: int):
+    # Black in RGB
+    black = np.zeros((height, width, 3), np.uint8)
+    # Draw circle mask
+    black = cv2.circle(black, (cX, cY), radius, (255, 255, 255), -1)
     return cv2.cvtColor(black, cv2.COLOR_BGR2GRAY)
 
 
@@ -123,6 +136,14 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
             threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, THRESH_TYPE | cv2.THRESH_OTSU)
         else:
             _, frame_bin = cv2.threshold(frame_blur, params["threshold"], 255, THRESH_TYPE)
+
+        # Filtering based on radius around the centroid
+        radius = FILTER_RADIUS
+        M = cv2.moments(frame_bin, True)
+        cX = int(M["m10"] / (M["m00"] + 1e-14))
+        cY = int(M["m01"] / (M["m00"] + 1e-14))
+        mask = draw_mask_radius(cX, cY, radius, w, h)
+        frame_bin = apply_mask_img(frame_bin, mask)
 
         contours, hierarchy = cv2.findContours(frame_bin, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
         # Filter out the contours that unlikely to be a circle

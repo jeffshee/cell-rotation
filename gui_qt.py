@@ -520,12 +520,28 @@ class MainWindow(QMainWindow):
             else:
                 _, frame_bin = cv2.threshold(frame_blur, self._threshold, 255, THRESH_TYPE)
 
-            self.bin_display.setPixmap(cv2_to_qpixmap(frame_bin))
+            # Filtering based on radius around the centroid
+            # https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
+            radius = FILTER_RADIUS
+
+            M = cv2.moments(frame_bin, True)
+            cX = int(M["m10"] / (M["m00"] + 1e-14))
+            cY = int(M["m01"] / (M["m00"] + 1e-14))
+            # Draw filter
+            frame_bin_display = cv2.circle(cv2.cvtColor(frame_bin.copy(), cv2.COLOR_GRAY2BGR), (cX, cY), radius,
+                                           (255, 0, 0))
+            frame_bin_display = cv2.drawMarker(frame_bin_display, (cX, cY), (255, 0, 0), markerType=cv2.MARKER_CROSS,
+                                               markerSize=4)
+            self.bin_display.setPixmap(cv2_to_qpixmap(frame_bin_display))
             self.bin_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
+
+            # Apply circle mask
+            mask = draw_mask_radius(cX, cY, radius, w, h)
+            frame_bin = apply_mask_img(frame_bin, mask)
 
             contours, hierarchy = cv2.findContours(frame_bin, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
             # Filter out the contours that unlikely to be a circle
-            contours = [contours_i for contours_i in contours if len(contours_i) > 4]
+            contours = [contours_i for contours_i in contours if len(contours_i) > FILTER_MIN_CONTOURS_LEN]
             # Show message if no contours found
             if len(contours) == 0:
                 # print("No contour found! Please adjust parameters.")
@@ -538,6 +554,10 @@ class MainWindow(QMainWindow):
                 hull_list = [cv2.convexHull(ptr_list)]
                 frame_contours = cv2.drawContours(frame_roi, contours=hull_list, contourIdx=-1, color=(0, 0, 255),
                                                   thickness=-1)
+                # # Draw filter
+                # frame_contours = cv2.circle(frame_contours, (cX, cY), radius, (255, 0, 0))
+                # frame_contours = cv2.drawMarker(frame_contours, (cX, cY), (255, 0, 0), markerType=cv2.MARKER_CROSS,
+                #                                 markerSize=8)
                 self.cell_display.setPixmap(cv2_to_qpixmap(frame_contours))
                 self.cell_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
 

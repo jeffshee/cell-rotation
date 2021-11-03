@@ -6,6 +6,8 @@ GAUSSIAN_BLUR_KSIZE = 5  # Kernel size of gaussian blur
 GAUSSIAN_BLUR_SIGMA = 0  # Sigma param of gaussian blur
 PREVIEW_SCALE = 4  # Scale factor of previews
 THRESH_TYPE = cv2.THRESH_BINARY_INV  # Base thresh type for the task
+FILTER_MIN_CONTOURS_LEN = 4
+FILTER_RADIUS = 15
 
 # Defaults
 DEFAULT_ADAPTIVE_THRESH = False
