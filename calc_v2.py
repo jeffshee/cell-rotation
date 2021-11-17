@@ -53,6 +53,8 @@ def proc(video_path: str, output_dir: str, name: str, params: dict):
     crop_video_path = os.path.join(output_dir, filename_append(basename, f"{name}-crop"))
     frame_list = cell_crop_video(video_path, crop_video_path, params, name)
     pairwise_similarity = calc_pairwise_similarity(crop_video_path, frame_list, name)
+    csv_path = os.path.join(output_dir, filename_append(basename, f"{name}", "csv"))
+    pairwise_similarity.to_csv(csv_path)
     fig_path = filename_append(crop_video_path, "fig", "png")
     plot_heatmap(crop_video_path, pairwise_similarity, fig_path)
 
