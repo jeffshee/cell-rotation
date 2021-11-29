@@ -1,3 +1,4 @@
+import math
 import os
 from multiprocessing import Process
 
@@ -10,6 +11,15 @@ from utils_v2 import *
 
 def similarity(img1: np.ndarray, img2: np.ndarray):
     return np.squeeze(cv2.matchTemplate(img1, img2, constants.TM_METHOD))
+
+
+def calc_stat(bounding_rects, mask_areas):
+    stat = pd.DataFrame(columns=["bounding_rect_w", "bounding_rect_h", "area", "est_radius"])
+    for i, (rect, area) in enumerate(zip(bounding_rects, mask_areas)):
+        _, _, rect_w, rect_h = rect
+        est_radius = math.sqrt(area / math.pi)
+        stat.loc[i] = [rect_w, rect_h, area, est_radius]
+    return stat
 
 
 def calc_pairwise_similarity(crop_video_path: str, frame_list: list = None, name=""):
@@ -51,10 +61,13 @@ def plot_heatmap(crop_video_path: str, pairwise_similarity: pd.DataFrame, output
 def proc(video_path: str, output_dir: str, name: str, params: dict):
     basename = os.path.basename(video_path)
     crop_video_path = os.path.join(output_dir, filename_append(basename, f"{name}-crop"))
-    frame_list = cell_crop_video(video_path, crop_video_path, params, name)
+    frame_list, bounding_rects, mask_areas = cell_crop_video(video_path, crop_video_path, params, name)
+    stat = calc_stat(bounding_rects, mask_areas)
+    csv_stat_path = os.path.join(output_dir, filename_append(basename, f"{name}-stat", "csv"))
+    stat.to_csv(csv_stat_path)
     pairwise_similarity = calc_pairwise_similarity(crop_video_path, frame_list, name)
-    csv_path = os.path.join(output_dir, filename_append(basename, f"{name}", "csv"))
-    pairwise_similarity.to_csv(csv_path)
+    csv_sim_path = os.path.join(output_dir, filename_append(basename, f"{name}-sim", "csv"))
+    pairwise_similarity.to_csv(csv_sim_path)
     fig_path = filename_append(crop_video_path, "fig", "png")
     plot_heatmap(crop_video_path, pairwise_similarity, fig_path)
 

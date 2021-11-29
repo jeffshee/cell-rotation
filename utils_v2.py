@@ -102,6 +102,10 @@ def center_pad(img, target_w, target_h):
     return cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
 
 
+def mask_area(mask):
+    return cv2.countNonZero(mask)
+
+
 def cell_crop_video(video_path: str, output_path: str, params: dict, name: str = ""):
     # Input/Output
     video_capture = cv2.VideoCapture(video_path)
@@ -112,6 +116,7 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
     bar = tqdm(total=video_length, desc=f"Detecting {name}")
     set_frame_position(video_capture, 0)
     bounding_rects = []
+    mask_areas = []
     masked_frames = []
     output_frames = []
     while video_capture.isOpened():
@@ -126,7 +131,8 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
         frame_roi = frame[y:y + h, x:x + w]
         frame_roi_gray = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2GRAY)
         if constants.APPLY_GAUSSIAN_BLUR:
-            frame_blur = cv2.GaussianBlur(frame_roi_gray, (constants.GAUSSIAN_BLUR_KSIZE, constants.GAUSSIAN_BLUR_KSIZE),
+            frame_blur = cv2.GaussianBlur(frame_roi_gray,
+                                          (constants.GAUSSIAN_BLUR_KSIZE, constants.GAUSSIAN_BLUR_KSIZE),
                                           constants.GAUSSIAN_BLUR_SIGMA)
         else:
             frame_blur = frame_roi_gray
@@ -159,6 +165,7 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
         # Mask unrelated region, save to frame list
         mask = draw_mask_contours(hull_list, w, h)
         masked_frames.append(apply_mask_img(frame_roi, mask))
+        mask_areas.append(mask_area(mask))
 
     video_capture.release()
     bar.close()
@@ -185,4 +192,4 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
         video_writer.write(frame_cropped)
         output_frames.append(frame_cropped)
     video_writer.release()
-    return output_frames
+    return output_frames, bounding_rects, mask_areas
