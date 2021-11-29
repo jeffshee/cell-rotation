@@ -4,7 +4,8 @@ from typing import Tuple
 import numpy as np
 from tqdm import tqdm
 
-from constants import *
+import cv2
+from constants import constants
 
 """
 Video
@@ -101,6 +102,10 @@ def center_pad(img, target_w, target_h):
     return cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
 
 
+def mask_area(mask):
+    return cv2.countNonZero(mask)
+
+
 def cell_crop_video(video_path: str, output_path: str, params: dict, name: str = ""):
     # Input/Output
     video_capture = cv2.VideoCapture(video_path)
@@ -111,6 +116,7 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
     bar = tqdm(total=video_length, desc=f"Detecting {name}")
     set_frame_position(video_capture, 0)
     bounding_rects = []
+    mask_areas = []
     masked_frames = []
     output_frames = []
     while video_capture.isOpened():
@@ -124,21 +130,22 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
         # Crop according ROI
         frame_roi = frame[y:y + h, x:x + w]
         frame_roi_gray = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2GRAY)
-        if APPLY_GAUSSIAN_BLUR:
-            frame_blur = cv2.GaussianBlur(frame_roi_gray, (GAUSSIAN_BLUR_KSIZE, GAUSSIAN_BLUR_KSIZE),
-                                          GAUSSIAN_BLUR_SIGMA)
+        if constants.APPLY_GAUSSIAN_BLUR:
+            frame_blur = cv2.GaussianBlur(frame_roi_gray,
+                                          (constants.GAUSSIAN_BLUR_KSIZE, constants.GAUSSIAN_BLUR_KSIZE),
+                                          constants.GAUSSIAN_BLUR_SIGMA)
         else:
             frame_blur = frame_roi_gray
         if params["adaptive_thresh"]:
-            frame_bin = cv2.adaptiveThreshold(frame_blur, 255, params["adaptive_method"], THRESH_TYPE,
+            frame_bin = cv2.adaptiveThreshold(frame_blur, 255, params["adaptive_method"], constants.THRESH_TYPE,
                                               params["block_size"], params["C"])
         elif params["auto_thresh"]:
-            threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, THRESH_TYPE | cv2.THRESH_OTSU)
+            threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, constants.THRESH_TYPE | cv2.THRESH_OTSU)
         else:
-            _, frame_bin = cv2.threshold(frame_blur, params["threshold"], 255, THRESH_TYPE)
+            _, frame_bin = cv2.threshold(frame_blur, params["threshold"], 255, constants.THRESH_TYPE)
 
         # Filtering based on radius around the centroid
-        radius = FILTER_RADIUS
+        radius = constants.FILTER_RADIUS
         M = cv2.moments(frame_bin, True)
         cX = int(M["m10"] / (M["m00"] + 1e-14))
         cY = int(M["m01"] / (M["m00"] + 1e-14))
@@ -158,6 +165,7 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
         # Mask unrelated region, save to frame list
         mask = draw_mask_contours(hull_list, w, h)
         masked_frames.append(apply_mask_img(frame_roi, mask))
+        mask_areas.append(mask_area(mask))
 
     video_capture.release()
     bar.close()
@@ -184,4 +192,4 @@ def cell_crop_video(video_path: str, output_path: str, params: dict, name: str =
         video_writer.write(frame_cropped)
         output_frames.append(frame_cropped)
     video_writer.release()
-    return output_frames
+    return output_frames, bounding_rects, mask_areas

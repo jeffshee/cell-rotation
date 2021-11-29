@@ -1,7 +1,8 @@
 import sys
 from cx_Freeze import setup, Executable
 
-build_exe_option = {"packages": ["seaborn"]}
+include_files = ["config.json"]
+build_exe_option = {"packages": ["seaborn"], "include_files": include_files}
 
 base = None
 if sys.platform == "win32":

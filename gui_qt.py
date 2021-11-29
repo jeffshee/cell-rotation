@@ -3,6 +3,7 @@ import sys
 import threading
 from multiprocessing import freeze_support
 from pprint import pprint
+import json
 
 # OpenCV2+PyQt5 issue workaround for Linux
 # https://forum.qt.io/topic/119109/using-pyqt5-with-opencv-python-cv2-causes-error-could-not-load-qt-platform-plugin-xcb-even-though-it-was-found/21
@@ -18,7 +19,7 @@ if sys.platform.startswith("linux") and ci_and_not_headless:
     os.environ.pop("QT_QPA_FONTDIR")
 
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon, QKeySequence
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
@@ -32,6 +33,20 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWid
 # def adjust_scrollbar(scrollbar: QScrollBar, factor):
 #     scrollbar.setValue(int(factor * scrollbar.value() + (factor - 1) * scrollbar.pageStep() / 2))
 
+def cm_tab10(i: int):
+    # Colormap tab10 taken from matplotlib
+    tab10 = [(0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
+             (1.0, 0.4980392156862745, 0.054901960784313725, 1.0),
+             (0.17254901960784313, 0.6274509803921569, 0.17254901960784313, 1.0),
+             (0.8392156862745098, 0.15294117647058825, 0.1568627450980392, 1.0),
+             (0.5803921568627451, 0.403921568627451, 0.7411764705882353, 1.0),
+             (0.5490196078431373, 0.33725490196078434, 0.29411764705882354, 1.0),
+             (0.8901960784313725, 0.4666666666666667, 0.7607843137254902, 1.0),
+             (0.4980392156862745, 0.4980392156862745, 0.4980392156862745, 1.0),
+             (0.7372549019607844, 0.7411764705882353, 0.13333333333333333, 1.0),
+             (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0)]
+    return tab10[i % 10]
+
 
 class RoiWidget(QLabel):
     RoiChanged = pyqtSignal()
@@ -43,8 +58,6 @@ class RoiWidget(QLabel):
         self._roi_dict = dict()
         self._cur_key = None
 
-        # Using ColorMap from matplotlib
-        self._cm = plt.cm.get_cmap("tab10")
         self._cm_count = 0
 
     def add(self, name) -> bool:
@@ -54,7 +67,7 @@ class RoiWidget(QLabel):
 
         # Assign new color
         self._cm_count += 1
-        r, g, b, _ = self._cm((self._cm_count % 10) / 10)
+        r, g, b, _ = cm_tab10(self._cm_count)
         r, g, b = int(r * 255), int(g * 255), int(b * 255)
 
         # Create new entry
@@ -112,7 +125,7 @@ class RoiWidget(QLabel):
         # Normalized (Ensure that no negative width and height)
         rect_roi = QRect(self._begin, self._end).normalized()
         # Ensure in-bound, get intersected with the image's rect
-        rect_roi = rect_roi.intersected(self.rect())
+        rect_roi = rect_roi.intersected(self.pixmap().rect())
         cur_item["roi"] = rect_roi
         # Debug
         # print("[ROI]", self._roi_dict[self._cur_key])
@@ -307,13 +320,13 @@ class MainWindow(QMainWindow):
         self._video_length = get_video_length(self._video_capture)
         self._frame = None
         self._frame_roi = None
-        self._adaptive_thresh = DEFAULT_ADAPTIVE_THRESH
-        self._auto_thresh = DEFAULT_AUTO_THRESH
-        self._adaptive_method = DEFAULT_ADAPTIVE_METHOD
+        self._adaptive_thresh = constants.DEFAULT_ADAPTIVE_THRESH
+        self._auto_thresh = constants.DEFAULT_AUTO_THRESH
+        self._adaptive_method = constants.DEFAULT_ADAPTIVE_METHOD
 
-        self._threshold = DEFAULT_THRESHOLD  # cv2.threshold
-        self._block_size = DEFAULT_BLOCK_SIZE  # cv2.adaptiveThreshold
-        self._C = DEFAULT_C  # cv2.adaptiveThreshold
+        self._threshold = constants.DEFAULT_THRESHOLD  # cv2.threshold
+        self._block_size = constants.DEFAULT_BLOCK_SIZE  # cv2.adaptiveThreshold
+        self._C = constants.DEFAULT_C  # cv2.adaptiveThreshold
 
         self._result_dict = dict()
         self.src_scale_factor = 1.0
@@ -425,12 +438,12 @@ class MainWindow(QMainWindow):
     def _new_current(self):
         current_name = self.roi_widget.get_current()
         if current_name:
-            current = dict(adaptive_thresh=DEFAULT_ADAPTIVE_THRESH,
-                           auto_thresh=DEFAULT_AUTO_THRESH,
-                           adaptive_method=DEFAULT_ADAPTIVE_METHOD,
-                           threshold=DEFAULT_THRESHOLD,
-                           block_size=DEFAULT_BLOCK_SIZE,
-                           C=DEFAULT_C
+            current = dict(adaptive_thresh=constants.DEFAULT_ADAPTIVE_THRESH,
+                           auto_thresh=constants.DEFAULT_AUTO_THRESH,
+                           adaptive_method=constants.DEFAULT_ADAPTIVE_METHOD,
+                           threshold=constants.DEFAULT_THRESHOLD,
+                           block_size=constants.DEFAULT_BLOCK_SIZE,
+                           C=constants.DEFAULT_C
                            )
             self._result_dict[current_name] = current
             print("[GUI] new_current")
@@ -507,22 +520,23 @@ class MainWindow(QMainWindow):
             frame_roi = self._frame_roi.copy()
             h, w, c = frame_roi.shape
             frame_roi_gray = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2GRAY)
-            if APPLY_GAUSSIAN_BLUR:
-                frame_blur = cv2.GaussianBlur(frame_roi_gray, (GAUSSIAN_BLUR_KSIZE, GAUSSIAN_BLUR_KSIZE),
-                                              GAUSSIAN_BLUR_SIGMA)
+            if constants.APPLY_GAUSSIAN_BLUR:
+                frame_blur = cv2.GaussianBlur(frame_roi_gray,
+                                              (constants.GAUSSIAN_BLUR_KSIZE, constants.GAUSSIAN_BLUR_KSIZE),
+                                              constants.GAUSSIAN_BLUR_SIGMA)
             else:
                 frame_blur = frame_roi_gray
             if self._adaptive_thresh:
-                frame_bin = cv2.adaptiveThreshold(frame_blur, 255, self._adaptive_method, THRESH_TYPE,
+                frame_bin = cv2.adaptiveThreshold(frame_blur, 255, self._adaptive_method, constants.THRESH_TYPE,
                                                   self._block_size, self._C)
             elif self._auto_thresh:
-                threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, THRESH_TYPE | cv2.THRESH_OTSU)
+                threshold, frame_bin = cv2.threshold(frame_blur, 0, 255, constants.THRESH_TYPE | cv2.THRESH_OTSU)
             else:
-                _, frame_bin = cv2.threshold(frame_blur, self._threshold, 255, THRESH_TYPE)
+                _, frame_bin = cv2.threshold(frame_blur, self._threshold, 255, constants.THRESH_TYPE)
 
             # Filtering based on radius around the centroid
             # https://learnopencv.com/find-center-of-blob-centroid-using-opencv-cpp-python/
-            radius = FILTER_RADIUS
+            radius = constants.FILTER_RADIUS
 
             M = cv2.moments(frame_bin, True)
             cX = int(M["m10"] / (M["m00"] + 1e-14))
@@ -533,7 +547,7 @@ class MainWindow(QMainWindow):
             frame_bin_display = cv2.drawMarker(frame_bin_display, (cX, cY), (255, 0, 0), markerType=cv2.MARKER_CROSS,
                                                markerSize=4)
             self.bin_display.setPixmap(cv2_to_qpixmap(frame_bin_display))
-            self.bin_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
+            self.bin_display.resize(w * constants.PREVIEW_SCALE, h * constants.PREVIEW_SCALE)
 
             # Apply circle mask
             mask = draw_mask_radius(cX, cY, radius, w, h)
@@ -541,7 +555,7 @@ class MainWindow(QMainWindow):
 
             contours, hierarchy = cv2.findContours(frame_bin, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
             # Filter out the contours that unlikely to be a circle
-            contours = [contours_i for contours_i in contours if len(contours_i) > FILTER_MIN_CONTOURS_LEN]
+            contours = [contours_i for contours_i in contours if len(contours_i) > constants.FILTER_MIN_CONTOURS_LEN]
             # Show message if no contours found
             if len(contours) == 0:
                 # print("No contour found! Please adjust parameters.")
@@ -559,7 +573,7 @@ class MainWindow(QMainWindow):
                 # frame_contours = cv2.drawMarker(frame_contours, (cX, cY), (255, 0, 0), markerType=cv2.MARKER_CROSS,
                 #                                 markerSize=8)
                 self.cell_display.setPixmap(cv2_to_qpixmap(frame_contours))
-                self.cell_display.resize(w * PREVIEW_SCALE, h * PREVIEW_SCALE)
+                self.cell_display.resize(w * constants.PREVIEW_SCALE, h * constants.PREVIEW_SCALE)
 
     # def _scale_image(self, factor):
     #     if self._frame is not None:
@@ -653,10 +667,18 @@ class MainWindow(QMainWindow):
             pprint(gui_result)
             output_dir = "output"
             os.makedirs(output_dir, exist_ok=True)
+            # NOTE: In previous release, we pprint the params and output a text file.
+            # In next release, we will change the output to JSON file.
+            # For backward compact., the index detected here will consider the existence of text file as well.
             index = len(
-                list(filter(lambda p: p.startswith("params") and p.endswith(".txt"), os.listdir(output_dir))))
-            with open(os.path.join(output_dir, "params_{:02d}.txt".format(index + 1)), "w") as f:
-                pprint(gui_result, f)
+                list(filter(lambda p: p.startswith("params") and (p.endswith(".txt") or p.endswith(".json")),
+                            os.listdir(output_dir))))
+            # Output params to JSON
+            with open(os.path.join(output_dir, "params_{:02d}.json".format(index + 1)), "w") as f:
+                json.dump(gui_result, f, indent=3)
+            # (Archive) Previous behavior
+            # with open(os.path.join(output_dir, "params_{:02d}.txt".format(index + 1)), "w") as f:
+            #     pprint(gui_result, f)
             thread = threading.Thread(target=main,
                                       kwargs=dict(video_path=self.video_path,
                                                   output_dir=output_dir,
