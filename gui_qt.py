@@ -19,7 +19,7 @@ if sys.platform.startswith("linux") and ci_and_not_headless:
     os.environ.pop("QT_QPA_FONTDIR")
 
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from PyQt5.QtCore import QPoint, QRect, Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QPixmap, QPainter, QColor, QBrush, QImage, QIcon, QKeySequence
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QInputDialog, \
@@ -33,6 +33,20 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWid
 # def adjust_scrollbar(scrollbar: QScrollBar, factor):
 #     scrollbar.setValue(int(factor * scrollbar.value() + (factor - 1) * scrollbar.pageStep() / 2))
 
+def cm_tab10(i: int):
+    # Colormap tab10 taken from matplotlib
+    tab10 = [(0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
+             (1.0, 0.4980392156862745, 0.054901960784313725, 1.0),
+             (0.17254901960784313, 0.6274509803921569, 0.17254901960784313, 1.0),
+             (0.8392156862745098, 0.15294117647058825, 0.1568627450980392, 1.0),
+             (0.5803921568627451, 0.403921568627451, 0.7411764705882353, 1.0),
+             (0.5490196078431373, 0.33725490196078434, 0.29411764705882354, 1.0),
+             (0.8901960784313725, 0.4666666666666667, 0.7607843137254902, 1.0),
+             (0.4980392156862745, 0.4980392156862745, 0.4980392156862745, 1.0),
+             (0.7372549019607844, 0.7411764705882353, 0.13333333333333333, 1.0),
+             (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0)]
+    return tab10[i % 10]
+
 
 class RoiWidget(QLabel):
     RoiChanged = pyqtSignal()
@@ -44,8 +58,6 @@ class RoiWidget(QLabel):
         self._roi_dict = dict()
         self._cur_key = None
 
-        # Using ColorMap from matplotlib
-        self._cm = plt.cm.get_cmap("tab10")
         self._cm_count = 0
 
     def add(self, name) -> bool:
@@ -55,7 +67,7 @@ class RoiWidget(QLabel):
 
         # Assign new color
         self._cm_count += 1
-        r, g, b, _ = self._cm((self._cm_count % 10) / 10)
+        r, g, b, _ = cm_tab10(self._cm_count)
         r, g, b = int(r * 255), int(g * 255), int(b * 255)
 
         # Create new entry
@@ -113,7 +125,7 @@ class RoiWidget(QLabel):
         # Normalized (Ensure that no negative width and height)
         rect_roi = QRect(self._begin, self._end).normalized()
         # Ensure in-bound, get intersected with the image's rect
-        rect_roi = rect_roi.intersected(self.rect())
+        rect_roi = rect_roi.intersected(self.pixmap().rect())
         cur_item["roi"] = rect_roi
         # Debug
         # print("[ROI]", self._roi_dict[self._cur_key])
