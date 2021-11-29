@@ -9,7 +9,7 @@ from utils_v2 import *
 
 
 def similarity(img1: np.ndarray, img2: np.ndarray):
-    return np.squeeze(cv2.matchTemplate(img1, img2, TM_METHOD))
+    return np.squeeze(cv2.matchTemplate(img1, img2, constants.TM_METHOD))
 
 
 def calc_pairwise_similarity(crop_video_path: str, frame_list: list = None, name=""):
@@ -23,9 +23,9 @@ def calc_pairwise_similarity(crop_video_path: str, frame_list: list = None, name
     video_framerate = get_video_framerate(video_capture)
     pairwise_similarity = pd.DataFrame()
     for t1 in tqdm(range(len(frame_list)), desc=f"Calculating {name}"):
-        T = min(int(t1 + DELTA_T_SEC_MAX * video_framerate), len(frame_list))
+        T = min(int(t1 + constants.DELTA_T_SEC_MAX * video_framerate), len(frame_list))
         for i, t2 in enumerate(range(t1, T)):
-            if T - t1 == int(DELTA_T_SEC_MAX * video_framerate):
+            if T - t1 == int(constants.DELTA_T_SEC_MAX * video_framerate):
                 # Drop last n sec of frames
                 pairwise_similarity.loc[t1, i] = similarity(frame_list[t1], frame_list[t2])
     return pairwise_similarity
@@ -42,7 +42,7 @@ def plot_heatmap(crop_video_path: str, pairwise_similarity: pd.DataFrame, output
     if output_path is None:
         plt.show()
     else:
-        for delta_t in DELTA_T_SEC_LIST:
+        for delta_t in constants.DELTA_T_SEC_LIST:
             plt.xlim(0, int(delta_t * video_framerate))
             plt.savefig(filename_append(output_path, "{:.1f}s".format(delta_t)))
     plt.close()
