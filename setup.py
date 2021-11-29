@@ -1,6 +1,7 @@
 import sys
 from cx_Freeze import setup, Executable
 
+includefiles = ['config.json']
 build_exe_option = {"packages": ["seaborn"]}
 
 base = None
@@ -11,6 +12,6 @@ setup(
     name="Cell Rotation",
     version="2.0",
     description="Python script to calculate the rotation speed of the cell from cell videos.",
-    options={"build_exe": build_exe_option},
+    options={"build_exe": build_exe_option, "include_files": includefiles},
     executables=[Executable("gui_qt.py")]
 )
