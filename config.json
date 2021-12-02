@@ -1,4 +1,5 @@
 {
+   "CONFIG_VERSION": 2,
    "APPLY_GAUSSIAN_BLUR": false,
    "GAUSSIAN_BLUR_KSIZE": 5,
    "GAUSSIAN_BLUR_SIGMA": 0,
@@ -18,5 +19,9 @@
       2.0,
       3.0
    ],
-   "DELTA_T_SEC_MAX": 3.0
+   "DELTA_T_SEC_MAX": 3.0,
+   "DP_MAX_CHANGE": 5,
+   "DP_PENALTY": 0.1,
+   "DEFAULT_DP_START_FRAME": 8,
+   "DEFAULT_DP_END_FRAME": 32
 }
