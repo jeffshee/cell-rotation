@@ -3,16 +3,29 @@ import json
 from pprint import pprint
 from argparse import Namespace
 
-if os.path.isfile("config.json"):
-    # Read Config
-    with open("config.json", "r") as f:
-        config = json.load(f)
-        print("[Config] Current configuration")
-        pprint(config)
-else:
+CURRENT_CONFIG_VERSION = 2
+
+
+def load_config():
+    if os.path.isfile("config.json"):
+        # Read Config
+        with open("config.json", "r") as f:
+            config = json.load(f)
+            if config.get("CONFIG_VERSION", -1) < CURRENT_CONFIG_VERSION:
+                print("[Config] Incompatible configuration. A new one will be generated.")
+                return False, None
+            print("[Config] Current configuration")
+            pprint(config)
+            return True, config
+    print("[Config] Configuration not found. A new one will be generated.")
+    return False, None
+
+
+def generate_config():
     import cv2
 
     config = dict()
+    config["CONFIG_VERSION"] = 2  # For checking the version of config.json
     # Settings
     config["APPLY_GAUSSIAN_BLUR"] = False  # Apply gaussian blur as preprocessing (Remove high-frequency noise)
     config["GAUSSIAN_BLUR_KSIZE"] = 5  # Kernel size of gaussian blur
@@ -38,10 +51,22 @@ else:
     config["DELTA_T_SEC_LIST"] = [1.0, 2.0, 3.0]
     config["DELTA_T_SEC_MAX"] = max(config["DELTA_T_SEC_LIST"])
 
+    # DP
+    config["DP_MAX_CHANGE"] = 5
+    config["DP_PENALTY"] = 0.1
+    config["DEFAULT_DP_START_FRAME"] = 8
+    config["DEFAULT_DP_END_FRAME"] = 32
+
     # Write Default config
     with open("config.json", "w") as f:
-        print(config)
+        pprint(config)
         json.dump(config, f, indent=3)
+    return config
+
+
+ret, config = load_config()
+if not ret:
+    config = generate_config()
 
 # Append config to namespace
 constants = Namespace(**config)

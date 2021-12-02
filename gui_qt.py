@@ -174,6 +174,11 @@ class RoiWidget(QLabel):
 
 
 def cv2_to_qpixmap(img: np.ndarray):
+    # Issue with OpenCV 4.5.4
+    # https://github.com/opencv/opencv/issues/20968
+    # (Workaround) Add shape check
+    if img.shape[-1] <= 1 or img.shape[-2] <= 1:
+        return QPixmap()
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     height, width, channel = img.shape
     bytes_per_line = 3 * width
